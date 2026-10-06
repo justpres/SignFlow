@@ -30,7 +30,14 @@ export async function GET(
     return NextResponse.json({ error: 'Requested file is not available' }, { status: 404 });
   }
 
-  const buffer = await getContractFileBuffer(filePath);
+  let buffer = await getContractFileBuffer(filePath);
+  if (!buffer) {
+    const fallbackBase64 = type === 'signed' ? contract.signedPdfBase64 : contract.originalPdfBase64;
+    if (fallbackBase64) {
+      buffer = Buffer.from(fallbackBase64, 'base64');
+    }
+  }
+
   if (!buffer) {
     return NextResponse.json({ error: 'File could not be retrieved from storage' }, { status: 404 });
   }

@@ -22,6 +22,8 @@ export interface Contract {
   confirmationAccepted?: boolean;
   finalizedAt?: string;
   message?: string;
+  originalPdfBase64?: string;
+  signedPdfBase64?: string;
 }
 
 export type AuditAction = 

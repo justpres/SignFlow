@@ -3,8 +3,10 @@ import { getAdminDb } from './admin';
 import fs from 'fs';
 import path from 'path';
 
-// Local disk persistence fallback for robust out-of-the-box local testing/verification without live GCP keys
-const LOCAL_DATA_DIR = path.join(process.cwd(), '.signflow_data');
+// Use /tmp directory if running on serverless (Vercel) where root filesystem is read-only
+const LOCAL_DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', '.signflow_data')
+  : path.join(process.cwd(), '.signflow_data');
 const CONTRACTS_FILE = path.join(LOCAL_DATA_DIR, 'contracts.json');
 const AUDITS_FILE = path.join(LOCAL_DATA_DIR, 'audits.json');
 export const LOCAL_STORAGE_DIR = path.join(LOCAL_DATA_DIR, 'storage');

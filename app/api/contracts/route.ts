@@ -65,6 +65,7 @@ export async function POST(request: Request) {
       expiresAt: new Date(expiresAt).toISOString(),
       contractVersion: 1,
       message,
+      originalPdfBase64: fileBuffer.toString('base64'),
     };
 
     await saveContract(newContract);
@@ -76,8 +77,9 @@ export async function POST(request: Request) {
       contract: newContract,
       signingToken: rawSigningToken, // returned once during creation to show/copy link
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Contract creation failed:', error);
-    return NextResponse.json({ error: 'Failed to create contract' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to create contract: ${message}` }, { status: 500 });
   }
 }

@@ -40,6 +40,10 @@ export async function GET(
   const buffer = await getContractFileBuffer(filePath);
   if (buffer) {
     pdfBase64 = buffer.toString('base64');
+  } else {
+    pdfBase64 = contract.status === 'SIGNED'
+      ? (contract.signedPdfBase64 || contract.originalPdfBase64 || null)
+      : (contract.originalPdfBase64 || null);
   }
 
   return NextResponse.json({

@@ -44,8 +44,11 @@ export async function POST(request: Request) {
       }, { status: 409 });
     }
 
-    // Retrieve original PDF bytes
-    const originalPdfBuffer = await getContractFileBuffer(contract.originalFilePath);
+    // Retrieve original PDF bytes (from storage or embedded base64)
+    let originalPdfBuffer = await getContractFileBuffer(contract.originalFilePath);
+    if (!originalPdfBuffer && contract.originalPdfBase64) {
+      originalPdfBuffer = Buffer.from(contract.originalPdfBase64, 'base64');
+    }
     if (!originalPdfBuffer) {
       return NextResponse.json({ error: 'Original contract document could not be loaded.' }, { status: 500 });
     }
@@ -72,6 +75,7 @@ export async function POST(request: Request) {
     contract.signedAt = nowIso;
     contract.finalizedAt = nowIso;
     contract.signedFilePath = signedStoragePath;
+    contract.signedPdfBase64 = signedPdfBuffer.toString('base64');
     contract.signatureMethod = signatureMethod || 'DRAW';
     contract.confirmationAccepted = true;
 

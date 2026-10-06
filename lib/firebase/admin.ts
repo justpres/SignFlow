@@ -51,5 +51,10 @@ export function getAdminDb(): Firestore | null {
 
 export function getAdminStorage(): Storage | null {
   const app = getAdminApp();
-  return app ? getStorage(app) : null;
+  if (!app) return null;
+  // Only use Cloud Storage if an explicit valid storage bucket is specified in env
+  if (!process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET && !process.env.FIREBASE_STORAGE_BUCKET) {
+    return null;
+  }
+  return getStorage(app);
 }
