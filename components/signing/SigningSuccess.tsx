@@ -52,7 +52,7 @@ export function SigningSuccess({
           <div className="p-3 border border-neutral-200 bg-neutral-50 flex items-center gap-2.5 text-xs text-neutral-700">
             <span className="w-2 h-2 bg-black shrink-0" />
             <span>
-              <strong>Cryptographically Sealed:</strong> Includes court-admissible Certificate of Completion & audit trail (ESIGN/UETA compliant).
+              <strong>Cryptographically Verified:</strong> Audit record and security checksums are embedded directly inside the document properties.
             </span>
           </div>
 
@@ -61,7 +61,7 @@ export function SigningSuccess({
             className="w-full inline-flex items-center justify-center gap-2 font-medium bg-black text-white hover:bg-neutral-800 border border-black text-sm px-4 py-3.5 transition-colors text-center"
           >
             <DownloadIcon className="w-4 h-4" />
-            DOWNLOAD FINALIZED PDF & CERTIFICATE
+            DOWNLOAD SIGNED PDF
           </a>
           <p className="text-xs text-neutral-500 text-center">
             Please download and retain an immutable copy of this executed document for your records.

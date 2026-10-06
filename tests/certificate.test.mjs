@@ -138,6 +138,8 @@ describe('SignFlow Industry-Grade Certificate of Completion & Legal Audit Suite'
 
     const loadedDoc = await PDFDocument.load(signedBuffer);
     assert.equal(loadedDoc.getPageCount(), 2, 'Page count must remain exactly 2 when attachCertificate is false');
+    assert.equal(loadedDoc.getAuthor(), 'Clean Test', 'Signer name must be embedded in PDF author metadata');
+    assert.ok(loadedDoc.getSubject()?.includes('cnt_clean_123'), 'Contract ID must be embedded in PDF subject metadata');
   });
 
   it('appendCertificateOfCompletion gracefully handles large audit trails (10+ events) and preserves terminal signing events', async () => {

@@ -597,7 +597,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
               <div className="flex items-center space-x-2 border-b border-neutral-200 pb-2">
                 <span className="w-2.5 h-2.5 bg-black" />
                 <span className="text-xs font-bold text-black uppercase tracking-wider">
-                  Tamper-Evident Security Seal & Audit Certificate
+                  Tamper-Evident Security Seal & Embedded Audit Record
                 </span>
               </div>
 
@@ -613,8 +613,8 @@ export function SigningFlow({ token }: SigningFlowProps) {
                 <div className="flex items-start space-x-2">
                   <span className="font-bold text-black font-mono">02.</span>
                   <div>
-                    <span className="font-semibold text-black block">Official Certificate of Completion</span>
-                    <span className="text-[11px] text-neutral-500">A court-admissible ESIGN & UETA compliant legal audit page is permanently appended.</span>
+                    <span className="font-semibold text-black block">Embedded Verification Record</span>
+                    <span className="text-[11px] text-neutral-500">Signer telemetry, contract ID, and compliance metadata are embedded directly inside the file.</span>
                   </div>
                 </div>
               </div>

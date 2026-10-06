@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       nameY: finalNameY,
       dateX: finalDateX,
       dateY: finalDateY,
-      attachCertificate: true,
+      attachCertificate: false,
     });
 
     // Store signed PDF as separate immutable artifact

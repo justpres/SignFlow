@@ -88,7 +88,30 @@ export async function generateSignedPdf({
     height: sigDims.height,
   });
 
-  // If certificate of completion is requested (industry-grade e-signing standard)
+  // Embed complete audit record & cryptographic verification metadata INSIDE the PDF file
+  // (Hidden inside document properties / XMP metadata, so the visual pages remain 100% clean without extra pages)
+  pdfDoc.setTitle(contractTitle || 'Signed Contract');
+  pdfDoc.setAuthor(clientName);
+  pdfDoc.setSubject(`SignFlow Verified Contract | ID: ${contractId} | SHA-256: ${originalPdfHash}`);
+  pdfDoc.setKeywords([
+    'SignFlow',
+    `ContractID:${contractId}`,
+    `Signer:${clientName}`,
+    `Email:${clientEmail || ''}`,
+    `IP:${ipAddress || '127.0.0.1'}`,
+    `SignedAt:${signedAtDate}`,
+    `Method:${signatureMethod || 'DRAW'}`,
+    `SHA256:${originalPdfHash}`,
+  ]);
+  pdfDoc.setProducer('SignFlow Cryptographic Signing Engine');
+  pdfDoc.setCreator('SignFlow (https://signflow.app)');
+  try {
+    pdfDoc.setModificationDate(new Date(signedAtDate));
+  } catch {
+    // Ignore date format issues if any
+  }
+
+  // If a visual certificate of completion is explicitly requested (defaults to false to keep document clean)
   if (attachCertificate) {
     const executedDocBytes = await pdfDoc.save();
     const sealedPdfHash = crypto.createHash('sha256').update(Buffer.from(executedDocBytes)).digest('hex');
