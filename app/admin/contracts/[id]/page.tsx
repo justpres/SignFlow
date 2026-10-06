@@ -21,6 +21,8 @@ export default function ContractDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRevoking, setIsRevoking] = useState(false);
   const [showRevokeModal, setShowRevokeModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const fetchDetails = useCallback(async () => {
     try {
@@ -60,6 +62,23 @@ export default function ContractDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/contracts/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setShowDeleteModal(false);
+        router.push('/admin');
+      }
+    } catch (e) {
+      console.error('Delete failed:', e);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="py-8 space-y-4 max-w-4xl mx-auto">
@@ -89,18 +108,18 @@ export default function ContractDetailPage() {
           ← Back to Dashboard
         </Link>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-black">{contract.title}</h1>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-black break-words">{contract.title}</h1>
               <StatusBadge status={contract.status} />
             </div>
-            <p className="text-xs font-mono text-neutral-400 mt-1">Reference: {contract.id}</p>
+            <p className="text-xs font-mono text-neutral-400 mt-1 break-all">Reference: {contract.id}</p>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
             <a
               href={`/api/contracts/${contract.id}/download?type=original`}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs border border-neutral-300 hover:border-black font-medium text-black"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs border border-neutral-300 hover:border-black font-medium text-black focus-visible:outline-black"
             >
               <DownloadIcon className="w-3.5 h-3.5" />
               Original PDF
@@ -109,7 +128,7 @@ export default function ContractDetailPage() {
             {contract.status === 'SIGNED' && (
               <a
                 href={`/api/contracts/${contract.id}/download?type=signed`}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs bg-black text-white hover:bg-neutral-800 font-medium"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs bg-black text-white hover:bg-neutral-800 font-medium focus-visible:outline-black"
               >
                 <DownloadIcon className="w-3.5 h-3.5" />
                 Signed Document
@@ -121,13 +140,22 @@ export default function ContractDetailPage() {
                 Revoke Request
               </Button>
             )}
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-neutral-600 border-neutral-300 hover:border-black hover:text-black"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              Delete Contract
+            </Button>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Contract Metadata */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 min-w-0 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Signer & Contract Summary</CardTitle>
@@ -184,8 +212,8 @@ export default function ContractDetailPage() {
         </div>
 
         {/* Right Column: Evidence & Audit Log */}
-        <div>
-          <Card>
+        <div className="lg:col-span-1 min-w-0">
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>Audit Trail</CardTitle>
             </CardHeader>
@@ -215,6 +243,30 @@ export default function ContractDetailPage() {
           </Button>
         </div>
       </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete Contract"
+        description="Are you sure you want to permanently delete this contract and all associated audit logs? This action cannot be undone."
+      >
+        <div className="flex justify-end space-x-3 pt-4">
+          <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            className="bg-black hover:bg-neutral-800 text-white"
+            onClick={handleDelete}
+            isLoading={isDeleting}
+            loadingText="Deleting..."
+          >
+            Permanently Delete
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
+

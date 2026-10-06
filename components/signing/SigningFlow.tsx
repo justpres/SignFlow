@@ -229,7 +229,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
       </div>
 
       {/* Main Signing Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
         {/* Step 1: Introduction */}
         {currentStep === 1 && (
           <div className="max-w-xl mx-auto my-auto w-full border border-neutral-300 p-8 text-center bg-white space-y-6">
@@ -275,9 +275,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
         {/* Step 2: Contract Viewer Screen */}
         {currentStep === 2 && (
-          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-[600px]">
+          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:h-[calc(100vh-12rem)] lg:min-h-[460px] lg:max-h-[calc(100vh-12rem)]">
             {/* Prominent PDF viewer */}
-            <div className="lg:col-span-8 flex flex-col h-full min-h-[500px]">
+            <div className="lg:col-span-8 flex flex-col h-[65vh] lg:h-full min-h-0 overflow-hidden">
               {pdfBase64 ? (
                 <PdfViewer pdfBase64={pdfBase64} />
               ) : (
@@ -288,7 +288,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
             </div>
 
             {/* Sidebar Instructions & Action */}
-            <div className="lg:col-span-4 flex flex-col justify-between border border-neutral-300 p-6 bg-neutral-50">
+            <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-6">
               <div className="space-y-4">
                 <div className="border-b border-neutral-200 pb-3">
                   <h2 className="text-base font-bold text-black">Step 1 of 3: Read Document</h2>
@@ -303,7 +303,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-neutral-200 space-y-3">
+              <div className="pt-4 border-t border-neutral-200 space-y-3">
                 <Button
                   variant="primary"
                   size="lg"

@@ -114,9 +114,9 @@ export function PdfViewer({ pdfBase64 }: PdfViewerProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-neutral-100 border border-neutral-300">
+    <div className="flex flex-col h-full min-h-0 bg-neutral-100 border border-neutral-300 overflow-hidden">
       {/* Viewer Toolbar */}
-      <div className="flex flex-wrap items-center justify-between p-3 bg-white border-b border-neutral-200 text-xs">
+      <div className="flex-shrink-0 flex flex-wrap items-center justify-between p-3 bg-white border-b border-neutral-200 text-xs">
         <div className="flex items-center space-x-2">
           <Button
             variant="outline"
@@ -174,7 +174,7 @@ export function PdfViewer({ pdfBase64 }: PdfViewerProps) {
       {/* PDF Canvas Viewport */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto p-4 sm:p-6 flex items-start justify-center min-h-[450px]"
+        className="flex-1 min-h-0 overflow-auto p-4 sm:p-6"
         tabIndex={0}
         aria-label="Contract document page view"
         onKeyDown={(e) => {
@@ -183,17 +183,21 @@ export function PdfViewer({ pdfBase64 }: PdfViewerProps) {
         }}
       >
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center my-auto space-y-3">
+          <div className="flex flex-col items-center justify-center min-h-full space-y-3">
             <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
             <p className="text-xs text-neutral-600">Loading document pages...</p>
           </div>
         ) : error ? (
-          <div className="text-center my-auto p-6 bg-white border border-black max-w-sm">
-            <p className="text-sm font-semibold text-black">{error}</p>
+          <div className="flex items-center justify-center min-h-full">
+            <div className="text-center p-6 bg-white border border-black max-w-sm">
+              <p className="text-sm font-semibold text-black">{error}</p>
+            </div>
           </div>
         ) : (
-          <div className="bg-white shadow-md border border-neutral-300">
-            <canvas ref={canvasRef} className="block" />
+          <div className="min-w-full min-h-full flex items-start justify-center">
+            <div className="bg-white shadow-md border border-neutral-300 flex-shrink-0">
+              <canvas ref={canvasRef} className="block" />
+            </div>
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getContractById, saveContract, addAuditLog, getAuditLogsForContract } from '@/lib/firebase/service';
+import { getContractById, saveContract, addAuditLog, getAuditLogsForContract, deleteContract } from '@/lib/firebase/service';
 import { getAdminSession } from '@/lib/auth/session';
 
 export async function GET(
@@ -51,4 +51,23 @@ export async function PATCH(
   }
 
   return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getAdminSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const contract = await getContractById(id);
+  if (!contract) {
+    return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+  }
+
+  await deleteContract(id);
+  return NextResponse.json({ success: true });
 }

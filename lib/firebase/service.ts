@@ -108,6 +108,34 @@ export async function getAllContracts(): Promise<Contract[]> {
   }
 }
 
+export async function deleteContract(id: string): Promise<void> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    await adminDb.collection('contracts').doc(id).delete();
+    const snap = await adminDb.collection('audit_logs').where('contractId', '==', id).get();
+    for (const doc of snap.docs) {
+      await doc.ref.delete();
+    }
+  } else {
+    const contracts = readLocalContracts();
+    const filteredContracts = contracts.filter(c => c.id !== id);
+    writeLocalContracts(filteredContracts);
+
+    const audits = readLocalAudits();
+    const filteredAudits = audits.filter(a => a.contractId !== id);
+    writeLocalAudits(filteredAudits);
+
+    const contractDir = path.join(LOCAL_DATA_DIR, 'storage', 'contracts', id);
+    if (fs.existsSync(contractDir)) {
+      try {
+        fs.rmSync(contractDir, { recursive: true, force: true });
+      } catch (err) {
+        console.warn('Failed to clean up contract storage directory:', err);
+      }
+    }
+  }
+}
+
 export async function addAuditLog(
   contractId: string,
   action: AuditAction,

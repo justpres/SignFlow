@@ -128,8 +128,17 @@ async function runEndToEndVerification() {
   assert.strictEqual(downloadRes.status, 200);
   const signedBuffer = Buffer.from(await downloadRes.arrayBuffer());
   const finalPdf = await PDFDocument.load(signedBuffer);
-  assert.strictEqual(finalPdf.getPageCount(), 2);
-  console.log('✓ Signed PDF downloaded and verified (original terms + certificate of completion).');
+  assert.strictEqual(finalPdf.getPageCount(), 1);
+  console.log('✓ Signed PDF downloaded and verified (in-place stamped signature).');
+
+  // 10. Clean up test contract so database is not polluted
+  console.log('10. Cleaning up test contract from database...');
+  const deleteRes = await fetch(`${baseUrl}/api/contracts/${contractId}`, {
+    method: 'DELETE',
+    headers: { Cookie: loginCookies },
+  });
+  assert.strictEqual(deleteRes.status, 200);
+  console.log('✓ Test contract cleaned up.');
 
   console.log('\n=============================================');
   console.log('ALL SIGNFLOW MVP 1 INTEGRATION CHECKS PASSED!');
