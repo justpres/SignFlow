@@ -56,6 +56,13 @@ export async function GET(
       expiresAt: contract.expiresAt,
       signedAt: contract.signedAt,
       message: contract.message,
+      signaturePage: contract.signaturePage,
+      signatureX: contract.signatureX,
+      signatureY: contract.signatureY,
+      nameX: contract.nameX,
+      nameY: contract.nameY,
+      dateX: contract.dateX,
+      dateY: contract.dateY,
     },
     pdfBase64,
   });

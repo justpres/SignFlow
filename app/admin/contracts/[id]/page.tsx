@@ -198,6 +198,17 @@ export default function ContractDetailPage() {
                   </dd>
                 </div>
               )}
+              {contract.signaturePage !== undefined && (
+                <div>
+                  <dt className="text-neutral-500 font-medium">Signature Placement</dt>
+                  <dd className="text-black font-mono mt-0.5">
+                    Page {contract.signaturePage}
+                    {contract.signatureX !== undefined && contract.signatureY !== undefined && (
+                      <span className="text-neutral-500"> ({contract.signatureX} pt, {contract.signatureY} pt)</span>
+                    )}
+                  </dd>
+                </div>
+              )}
             </dl>
 
             {contract.message && (

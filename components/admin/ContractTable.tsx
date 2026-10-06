@@ -2,15 +2,15 @@ import React from 'react';
 import Link from 'next/link';
 import { Contract } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { CopyIcon, DownloadIcon } from '@/components/ui/Icons';
+import { DownloadIcon } from '@/components/ui/Icons';
 
 interface ContractTableProps {
   contracts: Contract[];
-  onCopyLink: (contract: Contract) => void;
+  onCopyLink?: (contract: Contract) => void;
   onRevoke: (contract: Contract) => void;
 }
 
-export function ContractTable({ contracts, onCopyLink, onRevoke }: ContractTableProps) {
+export function ContractTable({ contracts, onCopyLink: _onCopyLink, onRevoke }: ContractTableProps) {
   return (
     <div>
       {/* Desktop Table View */}

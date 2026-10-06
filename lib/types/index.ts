@@ -29,6 +29,18 @@ export interface Contract {
   signatureY?: number;
   nameX?: number;
   nameY?: number;
+  dateX?: number;
+  dateY?: number;
+}
+
+export interface SignaturePlacement {
+  page: number;
+  signatureX: number;
+  signatureY: number;
+  nameX: number;
+  nameY: number;
+  dateX: number;
+  dateY: number;
 }
 
 export type AuditAction = 

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { Contract } from '@/lib/types';
 import { ContractTable } from '@/components/admin/ContractTable';
 import { EmptyState, Skeleton } from '@/components/ui/EmptyState';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 

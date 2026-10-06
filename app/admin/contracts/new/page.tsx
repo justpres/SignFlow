@@ -2,14 +2,12 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { DocumentIcon, CopyIcon, CheckIcon } from '@/components/ui/Icons';
 
 export default function NewContractPage() {
-  const router = useRouter();
 
   // Form states
   const [title, setTitle] = useState('');

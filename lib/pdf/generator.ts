@@ -12,6 +12,8 @@ interface FinalizePdfParams {
   signatureY?: number;
   nameX?: number;
   nameY?: number;
+  dateX?: number;
+  dateY?: number;
 }
 
 /**
@@ -29,6 +31,8 @@ export async function generateSignedPdf({
   signatureY,
   nameX,
   nameY,
+  dateX,
+  dateY,
 }: FinalizePdfParams): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(originalPdfBuffer);
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -79,9 +83,12 @@ export async function generateSignedPdf({
   });
 
   // 3. Add digital audit stamp and reference code right beneath the signer's name
+  const printDateX = dateX !== undefined ? dateX : printNameX;
+  const printDateY = dateY !== undefined ? dateY : Math.max(printNameY - 12, 25);
+
   page.drawText(`Digitally signed: ${new Date(signedAtDate).toLocaleDateString()} | ID: ${contractId}`, {
-    x: printNameX,
-    y: Math.max(printNameY - 12, 25),
+    x: printDateX,
+    y: printDateY,
     size: 8,
     font: helvetica,
     color: rgb(0.25, 0.25, 0.25),

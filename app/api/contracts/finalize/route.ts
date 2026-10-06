@@ -8,7 +8,21 @@ import { sendContractSignedTelegram } from '@/lib/notifications/telegram';
 
 export async function POST(request: Request) {
   try {
-    const { token, clientName, signatureDataUrl, signatureMethod } = await request.json();
+    const body = await request.json();
+    const {
+      token,
+      clientName,
+      signatureDataUrl,
+      signatureMethod,
+      page,
+      signatureX,
+      signatureY,
+      nameX,
+      nameY,
+      dateX,
+      dateY,
+      placement,
+    } = body;
 
     if (!token || !clientName || !signatureDataUrl) {
       return NextResponse.json({ error: 'Missing required signature submission fields' }, { status: 400 });
@@ -55,6 +69,15 @@ export async function POST(request: Request) {
 
     const nowIso = new Date().toISOString();
 
+    // Determine final placement coordinates (prefer client submitted placement, fallback to contract defaults)
+    const finalPage = page ?? placement?.page ?? contract.signaturePage;
+    const finalSigX = signatureX ?? placement?.signatureX ?? contract.signatureX;
+    const finalSigY = signatureY ?? placement?.signatureY ?? contract.signatureY;
+    const finalNameX = nameX ?? placement?.nameX ?? contract.nameX;
+    const finalNameY = nameY ?? placement?.nameY ?? contract.nameY;
+    const finalDateX = dateX ?? placement?.dateX ?? contract.dateX;
+    const finalDateY = dateY ?? placement?.dateY ?? contract.dateY;
+
     // Generate signed PDF with pdf-lib directly on the contract letter
     const signedPdfBuffer = await generateSignedPdf({
       originalPdfBuffer,
@@ -63,11 +86,13 @@ export async function POST(request: Request) {
       contractId: contract.id,
       contractTitle: contract.title,
       signedAtDate: nowIso,
-      signaturePage: contract.signaturePage,
-      signatureX: contract.signatureX,
-      signatureY: contract.signatureY,
-      nameX: contract.nameX,
-      nameY: contract.nameY,
+      signaturePage: finalPage,
+      signatureX: finalSigX,
+      signatureY: finalSigY,
+      nameX: finalNameX,
+      nameY: finalNameY,
+      dateX: finalDateX,
+      dateY: finalDateY,
     });
 
     // Store signed PDF as separate immutable artifact
@@ -83,11 +108,24 @@ export async function POST(request: Request) {
     contract.signedPdfBase64 = signedPdfBuffer.toString('base64');
     contract.signatureMethod = signatureMethod || 'DRAW';
     contract.confirmationAccepted = true;
+    if (finalPage !== undefined) contract.signaturePage = finalPage;
+    if (finalSigX !== undefined) contract.signatureX = finalSigX;
+    if (finalSigY !== undefined) contract.signatureY = finalSigY;
+    if (finalNameX !== undefined) contract.nameX = finalNameX;
+    if (finalNameY !== undefined) contract.nameY = finalNameY;
+    if (finalDateX !== undefined) contract.dateX = finalDateX;
+    if (finalDateY !== undefined) contract.dateY = finalDateY;
 
     await saveContract(contract);
 
     // Audit logs
-    await addAuditLog(contract.id, 'SIGNATURE_COMPLETED', { clientName, signatureMethod });
+    await addAuditLog(contract.id, 'SIGNATURE_COMPLETED', {
+      clientName,
+      signatureMethod,
+      signaturePage: finalPage,
+      signatureX: finalSigX,
+      signatureY: finalSigY,
+    });
     await addAuditLog(contract.id, 'CONTRACT_SIGNED', { clientName, signedAt: nowIso });
     await addAuditLog(contract.id, 'SIGNED_PDF_GENERATED', { filePath: signedStoragePath });
 
