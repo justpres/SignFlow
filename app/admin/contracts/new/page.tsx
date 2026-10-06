@@ -103,6 +103,17 @@ export default function NewContractPage() {
       setCreatedToken(data.signingToken);
       setCreatedContractId(data.contract.id);
       setIsLoading(false);
+
+      // Auto-copy the private signing link to clipboard immediately
+      if (typeof window !== 'undefined' && data.signingToken) {
+        const fullSigningUrl = `${window.location.origin}/sign/${data.signingToken}`;
+        try {
+          await navigator.clipboard.writeText(fullSigningUrl);
+          setCopied(true);
+        } catch (clipErr) {
+          console.warn('Auto-copy to clipboard failed:', clipErr);
+        }
+      }
     } catch {
       setError('A network error occurred. Please try again.');
       setIsLoading(false);
@@ -124,7 +135,7 @@ export default function NewContractPage() {
     return (
       <div className="max-w-2xl mx-auto py-6">
         <Card>
-          <div className="flex items-center space-x-3 mb-6 pb-4 border-b border-neutral-100">
+          <div className="flex items-center space-x-3 mb-4 pb-4 border-b border-neutral-100">
             <div className="p-2 bg-black text-white">
               <CheckIcon className="w-5 h-5" />
             </div>
@@ -132,6 +143,19 @@ export default function NewContractPage() {
               <h2 className="text-xl font-bold text-black">Contract Created Successfully</h2>
               <p className="text-xs text-neutral-500">A private signing link is ready for your client.</p>
             </div>
+          </div>
+
+          {/* Auto-copy notification banner */}
+          <div className="mb-6 p-3 bg-neutral-900 border border-black text-white text-xs flex items-center justify-between">
+            <div className="flex items-center space-x-2 min-w-0 mr-2">
+              <CheckIcon className="w-4 h-4 text-white shrink-0" />
+              <span className="truncate">
+                <strong>Signing link automatically copied to clipboard!</strong> Ready to paste and send.
+              </span>
+            </div>
+            <span className="text-[10px] bg-neutral-800 text-neutral-300 font-mono px-2 py-0.5 border border-neutral-700 shrink-0">
+              COPIED
+            </span>
           </div>
 
           <div className="space-y-4 mb-8">
