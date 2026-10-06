@@ -214,3 +214,35 @@ test('Finalize coordinate resolution handles root coordinates, placement object,
   });
 });
 
+test('Header tab clearance: clamping calculation reserves minimum top margin at all scales', () => {
+  const pageHeight = 792;
+  const SIG_BOX_HEIGHT_PT = 50;
+
+  for (const scale of [0.6, 0.8, 1.0, 1.25, 1.5, 2.0]) {
+    const minTopMarginPt = Math.ceil(32 / scale);
+    const maxSigY = Math.round(pageHeight - SIG_BOX_HEIGHT_PT - minTopMarginPt);
+
+    // Compute top distance of signature box in screen pixels at maximum Y
+    const sigBoxTopPx = (pageHeight - (maxSigY + SIG_BOX_HEIGHT_PT)) * scale;
+
+    // The -top-7 (28px) drag header tab must fit within the page container without clipping
+    assert.ok(
+      sigBoxTopPx >= 28,
+      `At scale ${scale}, top pixel clearance (${sigBoxTopPx}px) must be >= 28px for the top drag tab`
+    );
+  }
+});
+
+test('Data URI prefix sanitizer correctly handles raw base64 and standard PDF data URIs', () => {
+  const sanitize = (str) => str.trim().replace(/^data:[^;]+;base64,/, '');
+
+  const raw = 'JVBERi0xLjUKJUZha2VQZGY=';
+  const withPrefix = 'data:application/pdf;base64,JVBERi0xLjUKJUZha2VQZGY=';
+  const withWhitespace = '  data:application/pdf;base64,JVBERi0xLjUKJUZha2VQZGY=  \n';
+
+  assert.equal(sanitize(raw), raw);
+  assert.equal(sanitize(withPrefix), raw);
+  assert.equal(sanitize(withWhitespace), raw);
+});
+
+

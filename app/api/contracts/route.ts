@@ -58,6 +58,8 @@ export async function POST(request: Request) {
     const signatureY = formData.get('signatureY') ? Number(formData.get('signatureY')) : undefined;
     const nameX = formData.get('nameX') ? Number(formData.get('nameX')) : undefined;
     const nameY = formData.get('nameY') ? Number(formData.get('nameY')) : undefined;
+    const dateX = formData.get('dateX') ? Number(formData.get('dateX')) : undefined;
+    const dateY = formData.get('dateY') ? Number(formData.get('dateY')) : undefined;
 
     const newContract: Contract = {
       id: contractId,
@@ -77,6 +79,8 @@ export async function POST(request: Request) {
       signatureY,
       nameX,
       nameY,
+      dateX,
+      dateY,
     };
 
     await saveContract(newContract);

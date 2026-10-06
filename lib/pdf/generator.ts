@@ -62,10 +62,10 @@ export async function generateSignedPdf({
   const sigBoxHeight = 50;
   const sigDims = signatureImage.scaleToFit(sigBoxWidth, sigBoxHeight);
 
-  // 1. Stamp the electronic signature directly on the signature line
+  // 1. Stamp the electronic signature directly on the signature line (centered in 170x50 box)
   page.drawImage(signatureImage, {
     x: posX + (sigBoxWidth - sigDims.width) / 2,
-    y: posY,
+    y: posY + (sigBoxHeight - sigDims.height) / 2,
     width: sigDims.width,
     height: sigDims.height,
   });

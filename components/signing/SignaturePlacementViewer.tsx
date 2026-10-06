@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/ui/Icons';
 import { Button } from '@/components/ui/Button';
 import { SignaturePlacement } from '@/lib/types';
@@ -50,6 +50,26 @@ export function SignaturePlacementViewer({
     initialSigY: number;
   }>({ pointerX: 0, pointerY: 0, initialSigX: 0, initialSigY: 0 });
   const didDragRef = useRef<boolean>(false);
+  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  // Clamp helper ensuring signature box stays strictly within page bounds
+  const clampPlacement = useCallback((targetX: number, targetY: number, pageNum: number): SignaturePlacement => {
+    const minTopMarginPt = Math.ceil(32 / scale);
+    const maxSigY = Math.round(pageDimensions.height - SIG_BOX_HEIGHT_PT - minTopMarginPt);
+
+    const clampedX = Math.max(10, Math.min(targetX, Math.round(pageDimensions.width - SIG_BOX_WIDTH_PT - 10)));
+    const clampedY = Math.max(40, Math.min(targetY, Math.max(40, maxSigY)));
+
+    return {
+      page: pageNum,
+      signatureX: clampedX,
+      signatureY: clampedY,
+      nameX: clampedX,
+      nameY: Math.max(clampedY - 18, 20),
+      dateX: clampedX,
+      dateY: Math.max(clampedY - 30, 10),
+    };
+  }, [pageDimensions.height, pageDimensions.width, scale]);
 
   // Load PDF Document
   useEffect(() => {
@@ -64,7 +84,8 @@ export function SignaturePlacementViewer({
           pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
         }
 
-        const rawBytes = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+        const cleanBase64 = pdfBase64.trim().replace(/^data:[^;]+;base64,/, '');
+        const rawBytes = Uint8Array.from(atob(cleanBase64), (c) => c.charCodeAt(0));
         const loadingTask = pdfjsLib.getDocument({ data: rawBytes });
         const doc = await loadingTask.promise;
 
@@ -72,14 +93,24 @@ export function SignaturePlacementViewer({
         pdfDocRef.current = doc;
         setNumPages(doc.numPages);
 
-        // Determine target starting page
-        const initialTargetPage = defaultPlacementPage && defaultPlacementPage > 0 && defaultPlacementPage <= doc.numPages
-          ? defaultPlacementPage
-          : placement.page && placement.page > 0 && placement.page <= doc.numPages
-          ? placement.page
-          : doc.numPages; // Default to last page where contracts are typically signed
+        // Determine target starting page:
+        // Priority 1: Admin pre-configured defaultPlacementPage
+        // Priority 2: Pre-selected placement page (if explicit admin choice was provided)
+        // Priority 3: Last page (doc.numPages) where signature blanks typically reside
+        let targetPage = doc.numPages;
+        if (defaultPlacementPage && defaultPlacementPage > 0 && defaultPlacementPage <= doc.numPages) {
+          targetPage = defaultPlacementPage;
+        } else if (placement.page && placement.page > 0 && placement.page <= doc.numPages && defaultPlacementPage !== undefined) {
+          targetPage = placement.page;
+        }
 
-        setCurrentPage(initialTargetPage);
+        setCurrentPage(targetPage);
+        if (placement.page !== targetPage) {
+          onPlacementChange({
+            ...placement,
+            page: targetPage,
+          });
+        }
         setIsLoading(false);
       } catch (err: unknown) {
         if (isCancelled) return;
@@ -96,11 +127,13 @@ export function SignaturePlacementViewer({
     return () => {
       isCancelled = true;
     };
-  }, [pdfBase64, defaultPlacementPage, placement.page]);
+  }, [pdfBase64, defaultPlacementPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Render current page onto canvas
+  // Render current page onto canvas with concurrent task cancellation protection
   useEffect(() => {
     let isCancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let currentRenderTask: any = null;
 
     async function renderPage() {
       if (!pdfDocRef.current || !canvasRef.current) return;
@@ -127,9 +160,12 @@ export function SignaturePlacementViewer({
           viewport: viewport,
         };
 
-        await page.render(renderContext).promise;
-      } catch (e) {
-        if (!isCancelled) {
+        currentRenderTask = page.render(renderContext);
+        await currentRenderTask.promise;
+      } catch (e: unknown) {
+        // Suppress benign RenderingCancelledException when page/zoom switches
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!isCancelled && (e as any)?.name !== 'RenderingCancelledException') {
           console.error('Page render error:', e);
         }
       }
@@ -139,16 +175,19 @@ export function SignaturePlacementViewer({
 
     return () => {
       isCancelled = true;
+      if (currentRenderTask) {
+        currentRenderTask.cancel();
+      }
     };
   }, [currentPage, scale]);
 
   const scaleFactor = scale;
 
-  // Screen CSS dimensions & positions derived from PDF point coordinates
-  const badgeWidthPx = SIG_BOX_WIDTH_PT * scaleFactor;
+  // Exact screen dimensions & coordinates for the 170x50pt signature box:
+  const sigBoxWidthPx = SIG_BOX_WIDTH_PT * scaleFactor;
   const sigBoxHeightPx = SIG_BOX_HEIGHT_PT * scaleFactor;
-  const badgeLeftPx = placement.signatureX * scaleFactor;
-  const badgeTopPx = (pageDimensions.height - (placement.signatureY + SIG_BOX_HEIGHT_PT)) * scaleFactor;
+  const sigBoxLeftPx = placement.signatureX * scaleFactor;
+  const sigBoxTopPx = (pageDimensions.height - (placement.signatureY + SIG_BOX_HEIGHT_PT)) * scaleFactor;
 
   // Handle Drag Pointer Events (Mouse & Touch)
   const handlePointerDown = (clientX: number, clientY: number, e: React.SyntheticEvent) => {
@@ -163,8 +202,14 @@ export function SignaturePlacementViewer({
     setIsDragging(true);
 
     const onPointerMove = (moveEvent: MouseEvent | TouchEvent) => {
-      const curX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
-      const curY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
+      // Prevent mobile page scroll/pan during signature dragging
+      if ('cancelable' in moveEvent && moveEvent.cancelable) {
+        moveEvent.preventDefault();
+      }
+
+      const curX = 'touches' in moveEvent ? moveEvent.touches[0]?.clientX : moveEvent.clientX;
+      const curY = 'touches' in moveEvent ? moveEvent.touches[0]?.clientY : moveEvent.clientY;
+      if (curX === undefined || curY === undefined) return;
 
       const deltaScreenX = curX - dragStartRef.current.pointerX;
       const deltaScreenY = curY - dragStartRef.current.pointerY;
@@ -173,26 +218,14 @@ export function SignaturePlacementViewer({
         didDragRef.current = true;
       }
 
-      // Convert screen delta to PDF points
-      // In PDF, Y=0 is bottom and grows upwards, whereas screen Y grows downwards
+      // Convert screen delta to PDF points (Y=0 is bottom in PDF)
       const deltaPdfX = deltaScreenX / scaleFactor;
       const deltaPdfY = -(deltaScreenY / scaleFactor);
 
       const targetSigX = Math.round(dragStartRef.current.initialSigX + deltaPdfX);
       const targetSigY = Math.round(dragStartRef.current.initialSigY + deltaPdfY);
 
-      const clampedSigX = Math.max(10, Math.min(targetSigX, Math.round(pageDimensions.width - SIG_BOX_WIDTH_PT - 10)));
-      const clampedSigY = Math.max(40, Math.min(targetSigY, Math.round(pageDimensions.height - SIG_BOX_HEIGHT_PT - 20)));
-
-      onPlacementChange({
-        page: currentPage,
-        signatureX: clampedSigX,
-        signatureY: clampedSigY,
-        nameX: clampedSigX,
-        nameY: Math.max(clampedSigY - 18, 20),
-        dateX: clampedSigX,
-        dateY: Math.max(clampedSigY - 30, 10),
-      });
+      onPlacementChange(clampPlacement(targetSigX, targetSigY, currentPage));
     };
 
     const onPointerUp = () => {
@@ -200,6 +233,7 @@ export function SignaturePlacementViewer({
       window.removeEventListener('mouseup', onPointerUp);
       window.removeEventListener('touchmove', onPointerMove);
       window.removeEventListener('touchend', onPointerUp);
+      window.removeEventListener('touchcancel', onPointerUp);
       setIsDragging(false);
 
       setTimeout(() => {
@@ -211,6 +245,7 @@ export function SignaturePlacementViewer({
     window.addEventListener('mouseup', onPointerUp);
     window.addEventListener('touchmove', onPointerMove, { passive: false });
     window.addEventListener('touchend', onPointerUp);
+    window.addEventListener('touchcancel', onPointerUp);
   };
 
   // Tap or Click anywhere on page to place
@@ -221,28 +256,51 @@ export function SignaturePlacementViewer({
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // Center signature badge over click point
-    const targetLeftPx = clickX - badgeWidthPx / 2;
+    // Center signature box over clicked point
+    const targetLeftPx = clickX - sigBoxWidthPx / 2;
     const targetTopPx = clickY - sigBoxHeightPx / 2;
 
     const newSigX = Math.round(targetLeftPx / scaleFactor);
     const newSigY = Math.round(pageDimensions.height - (targetTopPx / scaleFactor) - SIG_BOX_HEIGHT_PT);
 
-    const clampedSigX = Math.max(10, Math.min(newSigX, Math.round(pageDimensions.width - SIG_BOX_WIDTH_PT - 10)));
-    const clampedSigY = Math.max(40, Math.min(newSigY, Math.round(pageDimensions.height - SIG_BOX_HEIGHT_PT - 20)));
-
-    onPlacementChange({
-      page: currentPage,
-      signatureX: clampedSigX,
-      signatureY: clampedSigY,
-      nameX: clampedSigX,
-      nameY: Math.max(clampedSigY - 18, 20),
-      dateX: clampedSigX,
-      dateY: Math.max(clampedSigY - 30, 10),
-    });
+    onPlacementChange(clampPlacement(newSigX, newSigY, currentPage));
   };
 
-  // Keyboard navigation for precision fine-tuning
+  // Touch tap handling on mobile devices
+  const handlePageTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    if (touch) {
+      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    }
+  };
+
+  const handlePageTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchStartPosRef.current || didDragRef.current || !pageContainerRef.current) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+
+    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    const dt = Date.now() - touchStartPosRef.current.time;
+
+    // Clean tap: minimal movement and short duration
+    if (dx < 10 && dy < 10 && dt < 400) {
+      const rect = pageContainerRef.current.getBoundingClientRect();
+      const clickX = touch.clientX - rect.left;
+      const clickY = touch.clientY - rect.top;
+
+      const targetLeftPx = clickX - sigBoxWidthPx / 2;
+      const targetTopPx = clickY - sigBoxHeightPx / 2;
+
+      const newSigX = Math.round(targetLeftPx / scaleFactor);
+      const newSigY = Math.round(pageDimensions.height - (targetTopPx / scaleFactor) - SIG_BOX_HEIGHT_PT);
+
+      onPlacementChange(clampPlacement(newSigX, newSigY, currentPage));
+    }
+    touchStartPosRef.current = null;
+  };
+
+  // Keyboard navigation for precision micro-adjustments
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 1 : 5;
     let newX = placement.signatureX;
@@ -264,18 +322,7 @@ export function SignaturePlacementViewer({
       return;
     }
 
-    const clampedSigX = Math.max(10, Math.min(newX, Math.round(pageDimensions.width - SIG_BOX_WIDTH_PT - 10)));
-    const clampedSigY = Math.max(40, Math.min(newY, Math.round(pageDimensions.height - SIG_BOX_HEIGHT_PT - 20)));
-
-    onPlacementChange({
-      page: currentPage,
-      signatureX: clampedSigX,
-      signatureY: clampedSigY,
-      nameX: clampedSigX,
-      nameY: Math.max(clampedSigY - 18, 20),
-      dateX: clampedSigX,
-      dateY: Math.max(clampedSigY - 30, 10),
-    });
+    onPlacementChange(clampPlacement(newX, newY, currentPage));
   };
 
   const handlePrevPage = () => {
@@ -391,7 +438,7 @@ export function SignaturePlacementViewer({
             type="button"
             onClick={handleResetToDefault}
             className="px-2 py-1 text-xs border border-neutral-300 hover:border-black font-medium text-neutral-700 hover:text-black cursor-pointer ml-1"
-            title="Reset signature to default signature blank location"
+            title="Reset signature to default location on signature page"
           >
             Reset
           </button>
@@ -444,11 +491,13 @@ export function SignaturePlacementViewer({
             <div
               ref={pageContainerRef}
               onClick={handlePageClick}
+              onTouchStart={handlePageTouchStart}
+              onTouchEnd={handlePageTouchEnd}
               className="relative inline-block bg-white shadow-md border border-neutral-300 flex-shrink-0 cursor-crosshair select-none"
             >
               <canvas ref={canvasRef} className="block pointer-events-none" />
 
-              {/* Draggable & Tappable Signature Badge */}
+              {/* Draggable & Tappable Signature Badge (Pixel-Accurate to PDF Stamping) */}
               {isCurrentPlacementPage && (
                 <div
                   ref={badgeRef}
@@ -457,70 +506,80 @@ export function SignaturePlacementViewer({
                   aria-label="Signature badge. Drag or use arrow keys to position."
                   onKeyDown={handleKeyDown}
                   onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY, e)}
-                  onTouchStart={(e) => handlePointerDown(e.touches[0].clientX, e.touches[0].clientY, e)}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    const touch = e.touches[0];
+                    if (touch) {
+                      handlePointerDown(touch.clientX, touch.clientY, e);
+                    }
+                  }}
                   style={{
                     position: 'absolute',
-                    left: `${badgeLeftPx}px`,
-                    top: `${badgeTopPx}px`,
-                    width: `${badgeWidthPx}px`,
+                    left: `${sigBoxLeftPx}px`,
+                    top: `${sigBoxTopPx}px`,
+                    width: `${sigBoxWidthPx}px`,
                     touchAction: 'none',
                   }}
-                  className={`border-2 border-dashed border-black bg-white/95 p-1.5 select-none transition-shadow ${
-                    isDragging
-                      ? 'shadow-2xl ring-2 ring-black cursor-grabbing'
-                      : 'shadow-md hover:shadow-lg cursor-grab focus:outline-none focus:ring-2 focus:ring-black'
+                  className={`select-none transition-shadow ${
+                    isDragging ? 'cursor-grabbing z-30' : 'cursor-grab z-20 hover:z-30'
                   }`}
                 >
-                  {/* Drag Handle & Info Header */}
-                  <div className="flex items-center justify-between pb-1 mb-1 border-b border-neutral-300 text-[10px] font-mono text-neutral-700 pointer-events-none">
-                    <span className="flex items-center space-x-1 font-bold text-black">
-                      <svg className="w-3 h-3 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {/* Drag Handle & Info Header Tab (Positioned above the signature box) */}
+                  <div
+                    className={`absolute -top-7 left-0 right-0 h-6 px-2 flex items-center justify-between text-[10px] font-mono border border-black shadow-sm pointer-events-none select-none transition-colors ${
+                      isDragging ? 'bg-black text-white ring-1 ring-black' : 'bg-black text-white hover:bg-neutral-800'
+                    }`}
+                  >
+                    <span className="flex items-center space-x-1 font-semibold truncate mr-1">
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
                       </svg>
-                      <span>Drag to position</span>
+                      <span className="truncate">Drag to position</span>
                     </span>
-                    <span className="text-[9px] bg-neutral-100 px-1 py-0.5 border border-neutral-300 font-semibold text-black">
+                    <span className="text-[9px] bg-neutral-800 text-neutral-200 px-1 py-0.5 border border-neutral-700 font-mono flex-shrink-0">
                       P.{placement.page} ({placement.signatureX},{placement.signatureY})
                     </span>
                   </div>
 
-                  {/* Signature Image Box */}
+                  {/* Target 170x50pt Signature Box (Exact 1:1 match with generator.ts) */}
                   <div
-                    className="flex items-center justify-center bg-white border border-neutral-200 overflow-hidden pointer-events-none"
                     style={{ height: `${sigBoxHeightPx}px` }}
+                    className={`w-full border-2 border-dashed border-black bg-white/90 flex items-center justify-center p-1 overflow-hidden transition-all ${
+                      isDragging ? 'shadow-2xl ring-2 ring-black bg-white' : 'shadow-md hover:shadow-lg'
+                    }`}
                   >
                     {signatureDataUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={signatureDataUrl}
                         alt="Signature preview"
-                        className="max-h-full max-w-full object-contain pointer-events-none"
+                        className="max-h-full max-w-full object-contain pointer-events-none select-none"
                       />
                     ) : (
-                      <span className="text-[10px] text-neutral-400">Signature Blank</span>
+                      <span className="text-[10px] text-neutral-400 font-mono">Signature Blank</span>
                     )}
                   </div>
 
-                  {/* Printed Full Legal Name */}
-                  <div
-                    className="mt-1 font-bold text-black truncate pointer-events-none tracking-tight"
-                    style={{
-                      fontSize: `${Math.max(9, Math.round(11 * scaleFactor))}px`,
-                      lineHeight: 1.15,
-                    }}
-                  >
-                    {signerName}
-                  </div>
-
-                  {/* Digital Stamp Line */}
-                  <div
-                    className="text-neutral-500 font-mono truncate pointer-events-none"
-                    style={{
-                      fontSize: `${Math.max(7, Math.round(8 * scaleFactor))}px`,
-                      lineHeight: 1.15,
-                    }}
-                  >
-                    Digitally signed &bull; SignFlow Verified
+                  {/* Printed Signer Legal Name & Digital Verification Stamp below the signature line */}
+                  <div className="mt-1 px-0.5 pointer-events-none select-none">
+                    <div
+                      className="font-bold text-black truncate tracking-tight"
+                      style={{
+                        fontSize: `${Math.max(9, Math.round(11 * scaleFactor))}px`,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {signerName}
+                    </div>
+                    <div
+                      className="text-neutral-500 font-mono truncate"
+                      style={{
+                        fontSize: `${Math.max(7, Math.round(8 * scaleFactor))}px`,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      Digitally signed &bull; SignFlow Verified
+                    </div>
                   </div>
                 </div>
               )}
