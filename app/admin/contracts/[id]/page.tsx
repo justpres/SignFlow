@@ -131,13 +131,13 @@ export default function ContractDetailPage() {
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs bg-black text-white hover:bg-neutral-800 font-medium focus-visible:outline-black"
               >
                 <DownloadIcon className="w-3.5 h-3.5" />
-                Signed Document
+                Download Signed PDF
               </a>
             )}
 
             {contract.status !== 'SIGNED' && contract.status !== 'REVOKED' && contract.status !== 'EXPIRED' && (
               <Button variant="outline" size="sm" onClick={() => setShowRevokeModal(true)}>
-                Revoke Request
+                Cancel Signing Request
               </Button>
             )}
 
@@ -233,24 +233,24 @@ export default function ContractDetailPage() {
         </div>
       </div>
 
-      {/* Revoke Confirmation Dialog */}
+      {/* Cancel Request Confirmation Dialog */}
       <Modal
         isOpen={showRevokeModal}
         onClose={() => setShowRevokeModal(false)}
-        title="Revoke Signing Request"
-        description="Are you sure you want to revoke this contract? The client will immediately lose access to this signing request."
+        title="Cancel Signing Request"
+        description="Are you sure you want to cancel this contract request? The client's signing link will be immediately disabled."
       >
         <div className="flex justify-end space-x-3 pt-4">
           <Button variant="outline" onClick={() => setShowRevokeModal(false)}>
-            Cancel
+            Keep Active
           </Button>
           <Button
             variant="primary"
             onClick={handleRevoke}
             isLoading={isRevoking}
-            loadingText="Revoking..."
+            loadingText="Cancelling..."
           >
-            Confirm Revocation
+            Confirm Cancellation
           </Button>
         </div>
       </Modal>

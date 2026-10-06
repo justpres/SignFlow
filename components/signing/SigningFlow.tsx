@@ -351,15 +351,15 @@ export function SigningFlow({ token }: SigningFlowProps) {
             <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-6">
               <div className="space-y-4">
                 <div className="border-b border-neutral-200 pb-3">
-                  <h2 className="text-base font-bold text-black">Step 1 of 3: Read Document</h2>
+                  <h2 className="text-base font-bold text-black">Step 2 of 5: Review Document</h2>
                   <p className="text-xs text-neutral-500 mt-1">
-                    Review all terms and conditions above. You can navigate pages and adjust zoom.
+                    Please read through the agreement. You can zoom in and navigate through the pages.
                   </p>
                 </div>
 
                 <div className="text-xs space-y-2 text-neutral-600">
-                  <p>• Ensure you agree to all specifications and legal clauses.</p>
-                  <p>• Once ready, proceed to provide your legal signature.</p>
+                  <p>• Make sure you agree to all specifications and terms.</p>
+                  <p>• When you are ready, continue below to add your signature.</p>
                 </div>
               </div>
 
@@ -370,14 +370,14 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   className="w-full"
                   onClick={handleProceedToSignature}
                 >
-                  PROCEED TO SIGNATURE →
+                  CONTINUE TO SIGNATURE →
                 </Button>
                 <button
                   type="button"
                   onClick={() => setCurrentStep(1)}
                   className="w-full text-xs text-neutral-600 hover:text-black underline text-center cursor-pointer"
                 >
-                  ← Back to introduction
+                  ← Back to Start
                 </button>
               </div>
             </div>
@@ -388,25 +388,25 @@ export function SigningFlow({ token }: SigningFlowProps) {
         {currentStep === 3 && (
           <div className="max-w-2xl mx-auto w-full border border-neutral-300 p-6 sm:p-8 bg-white space-y-6">
             <div className="border-b border-neutral-200 pb-4">
-              <h2 className="text-lg font-bold text-black">Provide Signature Information</h2>
+              <h2 className="text-lg font-bold text-black">Step 3 of 5: Create Your Signature</h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Enter your legal name and choose how you would like to sign the agreement.
+                Enter your full legal name and choose whether you would like to draw or type your signature.
               </p>
             </div>
 
             {/* Full Name input */}
             <Input
-              label="Full Legal Name"
+              label="Your Full Legal Name"
               required
               value={signerName}
               onChange={(e) => setSignerName(e.target.value)}
               placeholder="Juan Dela Cruz"
-              helperText="Enter your full legal name exactly as you want it to appear on the signed document."
+              helperText="Enter your name as you want it recorded on the signed agreement."
             />
 
             {/* Signature Method Tabs */}
             <div className="space-y-3 pt-2">
-              <label className="text-sm font-semibold text-black block">Signature</label>
+              <label className="text-sm font-semibold text-black block">Your Signature</label>
               <div className="flex border-b border-neutral-300">
                 <button
                   type="button"
@@ -417,7 +417,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                       : 'border-transparent text-neutral-500 hover:text-black'
                   }`}
                 >
-                  Draw Signature
+                  Draw with Mouse / Finger
                 </button>
                 <button
                   type="button"
@@ -444,7 +444,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
             {validationError && (
               <div className="p-3 border border-black bg-neutral-50 text-xs font-medium text-black" role="alert">
-                <span className="font-bold underline mr-1">Attention:</span>
+                <span className="font-bold underline mr-1">Please note:</span>
                 {validationError}
               </div>
             )}
@@ -454,7 +454,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                 ← Back to Document
               </Button>
               <Button variant="primary" onClick={handleProceedToPlacement}>
-                Place Signature →
+                CONTINUE TO PLACEMENT →
               </Button>
             </div>
           </div>
@@ -485,9 +485,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
             <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-6">
               <div className="space-y-4">
                 <div className="border-b border-neutral-200 pb-3">
-                  <h2 className="text-base font-bold text-black">Step 3 of 4: Position Signature</h2>
+                  <h2 className="text-base font-bold text-black">Step 4 of 5: Place Your Signature</h2>
                   <p className="text-xs text-neutral-500 mt-1">
-                    Position your signature precisely where you want it on the contract (e.g. over the designated signature line).
+                    Drag the signature box onto the signature line on the document, or tap anywhere to place it.
                   </p>
                 </div>
 
@@ -512,15 +512,15 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   </div>
                   <p className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-100 leading-tight">
                     {contract.signaturePage !== undefined
-                      ? 'The document sender designated this location for your signature. You may verify or fine-tune it.'
-                      : 'Your electronic signature will be stamped cleanly at this exact location.'}
+                      ? 'The sender suggested this spot. You can keep it or drag it to fine-tune.'
+                      : 'Your electronic signature will appear cleanly at this exact location.'}
                   </p>
                 </div>
 
                 <div className="text-xs space-y-2 text-neutral-600">
-                  <p>• <strong>Drag to position:</strong> Grab the signature badge with your mouse or finger to move it.</p>
-                  <p>• <strong>Tap to place:</strong> Tap anywhere on the contract page to instantly jump your signature there.</p>
-                  <p>• <strong>Page navigation:</strong> Use the toolbar arrows to place your signature on any page.</p>
+                  <p>• <strong>Drag to position:</strong> Click and drag the signature box with your mouse or finger.</p>
+                  <p>• <strong>Tap to place:</strong> Tap directly on any signature line to jump your signature there.</p>
+                  <p>• <strong>Page navigation:</strong> Use the toolbar arrows to place your signature on another page.</p>
                   <p>• <strong>Arrow keys:</strong> Use your keyboard arrows for fine millimeter adjustments.</p>
                 </div>
               </div>
@@ -532,14 +532,14 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   className="w-full"
                   onClick={() => setCurrentStep(5)}
                 >
-                  REVIEW & CONFIRM →
+                  CONTINUE TO REVIEW →
                 </Button>
                 <button
                   type="button"
                   onClick={() => setCurrentStep(3)}
                   className="w-full text-xs text-neutral-600 hover:text-black underline text-center cursor-pointer"
                 >
-                  ← Back to signature information
+                  ← Back to Signature
                 </button>
               </div>
             </div>
@@ -550,9 +550,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
         {currentStep === 5 && (
           <div className="max-w-2xl mx-auto w-full border border-neutral-300 p-6 sm:p-8 bg-white space-y-6">
             <div className="border-b border-neutral-200 pb-4">
-              <h2 className="text-lg font-bold text-black">Review Before Final Signing</h2>
+              <h2 className="text-lg font-bold text-black">Step 5 of 5: Final Review & Confirm</h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Please verify that your information, signature, and placement are correct before confirming.
+                Please double check your details and confirm your agreement to finalize signing.
               </p>
             </div>
 
@@ -671,7 +671,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   setShowFinalModal(true);
                 }}
               >
-                CONFIRM & SIGN
+                FINALIZE & SIGN CONTRACT ✓
               </Button>
             </div>
           </div>
@@ -684,17 +684,17 @@ export function SigningFlow({ token }: SigningFlowProps) {
         onClose={() => {
           if (!isFinalizing) setShowFinalModal(false);
         }}
-        title="Finalize Contract Execution"
+        title="Confirm Your Signature"
       >
         <div className="space-y-4">
           <p className="text-sm text-neutral-700">
-            You are about to execute this contract. Your signature will be stamped on the contract, and an official court-admissible Certificate of Completion will be permanently sealed.
+            You are about to complete and sign this agreement. Your electronic signature will be placed onto the document, and a verified signed copy will be generated.
           </p>
 
           <div className="p-3 bg-neutral-50 border border-neutral-200 text-xs space-y-1">
             <div><span className="font-semibold">Signer:</span> {signerName}</div>
             <div><span className="font-semibold">Contract:</span> {contract.title}</div>
-            <div><span className="font-semibold">Security Seal:</span> Cryptographic SHA-256 + Certificate of Completion</div>
+            <div><span className="font-semibold">Security Verification:</span> Cryptographic SHA-256 Digest + Embedded Audit Record</div>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-200">
@@ -709,9 +709,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
               variant="primary"
               onClick={handleFinalSubmit}
               isLoading={isFinalizing}
-              loadingText="Finalizing & sealing contract..."
+              loadingText="Finalizing your signed document..."
             >
-              CONFIRM & SIGN
+              YES, SIGN DOCUMENT
             </Button>
           </div>
         </div>

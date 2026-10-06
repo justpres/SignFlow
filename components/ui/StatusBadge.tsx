@@ -19,11 +19,11 @@ export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
 
   const statusLabels: Record<ContractStatus, string> = {
     DRAFT: 'Draft',
-    SENT: 'Pending Signature',
-    OPENED: 'Opened by Client',
+    SENT: 'Waiting for Client',
+    OPENED: 'Client Reviewing',
     SIGNED: 'Signed & Completed',
     EXPIRED: 'Expired',
-    REVOKED: 'Revoked',
+    REVOKED: 'Cancelled',
   };
 
   return (

@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-black">Contract Dashboard</h1>
           <p className="text-sm text-neutral-500 mt-1">
-            Monitor active signing requests, audit histories, and finalized documents.
+            Track active signing requests, view audit trails, and download completed documents.
           </p>
         </div>
         <div>
@@ -72,7 +72,7 @@ export default function AdminDashboardPage() {
             href="/admin/contracts/new"
             className="inline-flex items-center justify-center font-medium bg-black text-white hover:bg-neutral-800 border border-black text-sm px-4 py-2.5 h-10 transition-colors"
           >
-            Create Contract
+            + New Contract
           </Link>
         </div>
       </div>
@@ -80,11 +80,11 @@ export default function AdminDashboardPage() {
       {/* Top Status Summary Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 border border-neutral-200 bg-white">
-          <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">Pending Signature</div>
+          <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">Waiting for Client</div>
           <div className="text-3xl font-bold text-black mt-1">{pendingCount}</div>
         </div>
         <div className="p-4 border border-neutral-200 bg-white">
-          <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">Signed & Finalized</div>
+          <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">Signed & Completed</div>
           <div className="text-3xl font-bold text-black mt-1">{signedCount}</div>
         </div>
         <div className="p-4 border border-neutral-200 bg-white">
@@ -108,8 +108,8 @@ export default function AdminDashboardPage() {
         ) : contracts.length === 0 ? (
           <EmptyState
             title="No contracts yet"
-            description="Upload your first contract document to generate a private signing link for your client."
-            actionText="Create Contract"
+            description="Upload your first agreement to generate a secure signing link for your client."
+            actionText="+ New Contract"
             actionHref="/admin/contracts/new"
           />
         ) : (
