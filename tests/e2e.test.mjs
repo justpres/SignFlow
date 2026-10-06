@@ -40,8 +40,8 @@ describe('SignFlow End-to-End Cryptographic & PDF Finalization Suite', () => {
     assert.ok(signedBuffer instanceof Buffer);
     assert.ok(signedBuffer.length > originalBuffer.length);
 
-    // 4. Verify output PDF document structure
+    // 4. Verify output PDF document structure: NO extra page created, stamped directly in place
     const verifiedDoc = await PDFDocument.load(signedBuffer);
-    assert.strictEqual(verifiedDoc.getPageCount(), 2); // 1 original page + 1 certificate of completion page
+    assert.strictEqual(verifiedDoc.getPageCount(), 1); // 1 page letter, signed in place without adding an extra page
   });
 });

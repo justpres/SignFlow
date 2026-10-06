@@ -22,6 +22,9 @@ export default function NewContractPage() {
     return d.toISOString().split('T')[0];
   });
   const [message, setMessage] = useState('Please review and sign this agreement.');
+  const [signaturePage, setSignaturePage] = useState('');
+  const [signatureX, setSignatureX] = useState('');
+  const [signatureY, setSignatureY] = useState('');
   const [file, setFile] = useState<File | null>(null);
 
   // Flow & submission states
@@ -69,6 +72,9 @@ export default function NewContractPage() {
       formData.append('expiresAt', expiresAt);
       formData.append('message', message);
       formData.append('file', file);
+      if (signaturePage) formData.append('signaturePage', signaturePage);
+      if (signatureX) formData.append('signatureX', signatureX);
+      if (signatureY) formData.append('signatureY', signatureY);
 
       const res = await fetch('/api/contracts', {
         method: 'POST',
@@ -258,9 +264,46 @@ export default function NewContractPage() {
             </div>
           </div>
 
-          {/* Step 4: Configuration */}
+          {/* Step 4: Signature Placement on Letter */}
           <div className="space-y-4 pt-4 border-t border-neutral-100">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-black">4. Request Configuration</h3>
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-black">4. Signature Placement on Letter</h3>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                The client&apos;s electronic signature and printed legal name will be automatically stamped into the document&apos;s signature blank (_____).
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                label="Target Page"
+                type="number"
+                min={1}
+                value={signaturePage}
+                onChange={(e) => setSignaturePage(e.target.value)}
+                helperText="Page where signature line is located (leave empty for last page)."
+                optional
+              />
+              <Input
+                label="Horizontal Position (X)"
+                type="number"
+                value={signatureX}
+                onChange={(e) => setSignatureX(e.target.value)}
+                helperText="Left distance in points (default: 70)."
+                optional
+              />
+              <Input
+                label="Vertical Position (Y)"
+                type="number"
+                value={signatureY}
+                onChange={(e) => setSignatureY(e.target.value)}
+                helperText="Bottom distance in points (default: 115)."
+                optional
+              />
+            </div>
+          </div>
+
+          {/* Step 5: Configuration */}
+          <div className="space-y-4 pt-4 border-t border-neutral-100">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-black">5. Request Configuration</h3>
             <Input
               label="Expiration Date"
               type="date"

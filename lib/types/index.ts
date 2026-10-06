@@ -24,6 +24,11 @@ export interface Contract {
   message?: string;
   originalPdfBase64?: string;
   signedPdfBase64?: string;
+  signaturePage?: number;
+  signatureX?: number;
+  signatureY?: number;
+  nameX?: number;
+  nameY?: number;
 }
 
 export type AuditAction = 

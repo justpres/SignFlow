@@ -1,157 +1,90 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import crypto from 'crypto';
 
 interface FinalizePdfParams {
   originalPdfBuffer: Buffer;
   clientName: string;
   signaturePngBase64: string;
   contractId: string;
-  contractTitle: string;
+  contractTitle?: string;
   signedAtDate: string;
+  signaturePage?: number;
+  signatureX?: number;
+  signatureY?: number;
+  nameX?: number;
+  nameY?: number;
 }
 
+/**
+ * Places the electronic signature and client legal name directly ONTO the existing contract page
+ * exactly above the signature line (_____), without creating extra pages.
+ */
 export async function generateSignedPdf({
   originalPdfBuffer,
   clientName,
   signaturePngBase64,
   contractId,
-  contractTitle,
   signedAtDate,
+  signaturePage,
+  signatureX,
+  signatureY,
+  nameX,
+  nameY,
 }: FinalizePdfParams): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(originalPdfBuffer);
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  // Clean data URL prefix if present
+  // Decode signature image PNG
   const base64Data = signaturePngBase64.replace(/^data:image\/png;base64,/, '');
   const signatureBytes = Buffer.from(base64Data, 'base64');
   const signatureImage = await pdfDoc.embedPng(signatureBytes);
 
-  // Compute document SHA-256 for audit integrity
-  const docHash = crypto.createHash('sha256').update(originalPdfBuffer).digest('hex');
+  const totalPages = pdfDoc.getPageCount();
+  // Target existing contract page (1-indexed input converted to 0-indexed)
+  const targetPageIndex = signaturePage && signaturePage > 0 && signaturePage <= totalPages
+    ? signaturePage - 1
+    : totalPages - 1;
 
-  // Add formal Certificate of Completion & Signature Page
-  const certPage = pdfDoc.addPage([595.28, 841.89]); // Standard A4 points
-  const { width, height } = certPage.getSize();
+  const page = pdfDoc.getPage(targetPageIndex);
 
-  // Draw clean B&W header border
-  certPage.drawRectangle({
-    x: 40,
-    y: height - 100,
-    width: width - 80,
-    height: 60,
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 1.5,
-  });
+  // Position directly over standard signature line (_____):
+  // X: Defaults to left margin (70) or admin-specified placement
+  // Y: Defaults to signature line area (115) or admin-specified placement
+  const posX = signatureX !== undefined ? signatureX : 70;
+  const posY = signatureY !== undefined ? signatureY : 115;
 
-  certPage.drawText('SIGNFLOW CERTIFICATE OF COMPLETION', {
-    x: 55,
-    y: height - 68,
-    size: 14,
-    font: helveticaBold,
-    color: rgb(0, 0, 0),
-  });
+  // Scale signature cleanly to fit the signature blank
+  const sigBoxWidth = 170;
+  const sigBoxHeight = 50;
+  const sigDims = signatureImage.scaleToFit(sigBoxWidth, sigBoxHeight);
 
-  certPage.drawText('Document Finalization & Digital Signature Record', {
-    x: 55,
-    y: height - 85,
-    size: 9,
-    font: helvetica,
-    color: rgb(0.2, 0.2, 0.2),
-  });
-
-  // Section: Document Summary
-  let y = height - 130;
-  certPage.drawText('CONTRACT DETAILS', {
-    x: 40,
-    y,
-    size: 10,
-    font: helveticaBold,
-    color: rgb(0, 0, 0),
-  });
-
-  y -= 15;
-  certPage.drawLine({
-    start: { x: 40, y },
-    end: { x: width - 40, y },
-    thickness: 1,
-    color: rgb(0, 0, 0),
-  });
-
-  y -= 25;
-  const drawField = (label: string, value: string) => {
-    certPage.drawText(label, { x: 40, y, size: 9, font: helveticaBold, color: rgb(0.3, 0.3, 0.3) });
-    certPage.drawText(value, { x: 180, y, size: 9, font: helvetica, color: rgb(0, 0, 0) });
-    y -= 18;
-  };
-
-  drawField('Contract Title:', contractTitle);
-  drawField('Contract Reference ID:', contractId);
-  drawField('Original Document SHA-256:', `${docHash.substring(0, 32)}...`);
-  drawField('Audit Finalized Timestamp:', signedAtDate);
-
-  // Section: Signer Details & Embedded Signature
-  y -= 15;
-  certPage.drawText('ELECTRONIC SIGNATURE RECORD', {
-    x: 40,
-    y,
-    size: 10,
-    font: helveticaBold,
-    color: rgb(0, 0, 0),
-  });
-
-  y -= 15;
-  certPage.drawLine({
-    start: { x: 40, y },
-    end: { x: width - 40, y },
-    thickness: 1,
-    color: rgb(0, 0, 0),
-  });
-
-  y -= 25;
-  drawField('Signer Legal Name:', clientName);
-  drawField('Consent & Acceptance:', 'Verified (Explicitly agreed to contract terms)');
-
-  // Signature box
-  y -= 10;
-  certPage.drawText('Captured Signature:', { x: 40, y: y + 25, size: 9, font: helveticaBold, color: rgb(0.3, 0.3, 0.3) });
-
-  const sigBoxWidth = 240;
-  const sigBoxHeight = 80;
-  const sigBoxX = 180;
-  const sigBoxY = y - 60;
-
-  certPage.drawRectangle({
-    x: sigBoxX,
-    y: sigBoxY,
-    width: sigBoxWidth,
-    height: sigBoxHeight,
-    borderColor: rgb(0.8, 0.8, 0.8),
-    borderWidth: 1,
-  });
-
-  const sigDims = signatureImage.scaleToFit(sigBoxWidth - 20, sigBoxHeight - 16);
-  certPage.drawImage(signatureImage, {
-    x: sigBoxX + (sigBoxWidth - sigDims.width) / 2,
-    y: sigBoxY + (sigBoxHeight - sigDims.height) / 2,
+  // 1. Stamp the electronic signature directly on the signature line
+  page.drawImage(signatureImage, {
+    x: posX + (sigBoxWidth - sigDims.width) / 2,
+    y: posY,
     width: sigDims.width,
     height: sigDims.height,
   });
 
-  // Footer & Tamper Evidence
-  certPage.drawLine({
-    start: { x: 40, y: 70 },
-    end: { x: width - 40, y: 70 },
-    thickness: 0.5,
-    color: rgb(0.6, 0.6, 0.6),
+  // 2. Auto-input the client's printed full legal name right below the signature line
+  const printNameX = nameX !== undefined ? nameX : posX;
+  const printNameY = nameY !== undefined ? nameY : Math.max(posY - 18, 40);
+
+  page.drawText(clientName, {
+    x: printNameX,
+    y: printNameY,
+    size: 11,
+    font: helveticaBold,
+    color: rgb(0, 0, 0),
   });
 
-  certPage.drawText('SignFlow Immutable Document Finalizer • Generated server-side • All rights reserved', {
-    x: 40,
-    y: 55,
+  // 3. Add digital audit stamp and reference code right beneath the signer's name
+  page.drawText(`Digitally signed: ${new Date(signedAtDate).toLocaleDateString()} | ID: ${contractId}`, {
+    x: printNameX,
+    y: Math.max(printNameY - 12, 25),
     size: 8,
     font: helvetica,
-    color: rgb(0.4, 0.4, 0.4),
+    color: rgb(0.25, 0.25, 0.25),
   });
 
   const finalPdfBytes = await pdfDoc.save();

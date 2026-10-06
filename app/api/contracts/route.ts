@@ -53,6 +53,12 @@ export async function POST(request: Request) {
     const rawSigningToken = generateSigningToken();
     const signingTokenHash = hashSigningToken(rawSigningToken);
 
+    const signaturePage = formData.get('signaturePage') ? Number(formData.get('signaturePage')) : undefined;
+    const signatureX = formData.get('signatureX') ? Number(formData.get('signatureX')) : undefined;
+    const signatureY = formData.get('signatureY') ? Number(formData.get('signatureY')) : undefined;
+    const nameX = formData.get('nameX') ? Number(formData.get('nameX')) : undefined;
+    const nameY = formData.get('nameY') ? Number(formData.get('nameY')) : undefined;
+
     const newContract: Contract = {
       id: contractId,
       title,
@@ -66,6 +72,11 @@ export async function POST(request: Request) {
       contractVersion: 1,
       message,
       originalPdfBase64: fileBuffer.toString('base64'),
+      signaturePage,
+      signatureX,
+      signatureY,
+      nameX,
+      nameY,
     };
 
     await saveContract(newContract);

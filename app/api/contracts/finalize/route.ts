@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
     const nowIso = new Date().toISOString();
 
-    // Generate signed PDF with pdf-lib
+    // Generate signed PDF with pdf-lib directly on the contract letter
     const signedPdfBuffer = await generateSignedPdf({
       originalPdfBuffer,
       clientName,
@@ -63,6 +63,11 @@ export async function POST(request: Request) {
       contractId: contract.id,
       contractTitle: contract.title,
       signedAtDate: nowIso,
+      signaturePage: contract.signaturePage,
+      signatureX: contract.signatureX,
+      signatureY: contract.signatureY,
+      nameX: contract.nameX,
+      nameY: contract.nameY,
     });
 
     // Store signed PDF as separate immutable artifact
