@@ -57,7 +57,8 @@ function writeLocalAudits(audits: AuditLog[]) {
 export async function saveContract(contract: Contract): Promise<void> {
   const adminDb = getAdminDb();
   if (adminDb) {
-    await adminDb.collection('contracts').doc(contract.id).set(contract);
+    const cleanData = JSON.parse(JSON.stringify(contract));
+    await adminDb.collection('contracts').doc(contract.id).set(cleanData);
   } else {
     const contracts = readLocalContracts();
     const idx = contracts.findIndex(c => c.id === contract.id);
@@ -124,7 +125,8 @@ export async function addAuditLog(
 
   const adminDb = getAdminDb();
   if (adminDb) {
-    await adminDb.collection('audit_logs').doc(audit.id).set(audit);
+    const cleanAudit = JSON.parse(JSON.stringify(audit));
+    await adminDb.collection('audit_logs').doc(audit.id).set(cleanAudit);
   } else {
     const audits = readLocalAudits();
     audits.push(audit);

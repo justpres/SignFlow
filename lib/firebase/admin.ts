@@ -16,13 +16,18 @@ export function getAdminApp(): App | null {
 
   if (projectId && clientEmail && privateKey) {
     try {
+      const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+        process.env.FIREBASE_STORAGE_BUCKET ||
+        `${projectId}.firebasestorage.app` ||
+        `${projectId}.appspot.com`;
+
       adminApp = initializeApp({
         credential: cert({
           projectId,
           clientEmail,
           privateKey,
         }),
-        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        storageBucket: bucketName,
       });
       return adminApp;
     } catch (e) {
@@ -33,9 +38,15 @@ export function getAdminApp(): App | null {
   return null;
 }
 
+let adminDbInstance: Firestore | null = null;
+
 export function getAdminDb(): Firestore | null {
+  if (adminDbInstance) return adminDbInstance;
   const app = getAdminApp();
-  return app ? getFirestore(app) : null;
+  if (!app) return null;
+  adminDbInstance = getFirestore(app);
+  adminDbInstance.settings({ ignoreUndefinedProperties: true });
+  return adminDbInstance;
 }
 
 export function getAdminStorage(): Storage | null {

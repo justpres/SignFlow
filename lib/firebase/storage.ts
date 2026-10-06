@@ -10,22 +10,26 @@ export async function uploadContractFile(
 ): Promise<string> {
   const adminStorage = getAdminStorage();
   if (adminStorage) {
-    const bucket = adminStorage.bucket();
-    const file = bucket.file(storagePath);
-    await file.save(buffer, {
-      metadata: { contentType },
-    });
-    return storagePath;
-  } else {
-    // Local storage fallback
-    const fullPath = path.join(LOCAL_STORAGE_DIR, storagePath);
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    try {
+      const bucket = adminStorage.bucket();
+      const file = bucket.file(storagePath);
+      await file.save(buffer, {
+        metadata: { contentType },
+      });
+      return storagePath;
+    } catch (e) {
+      console.warn("Cloud Storage save failed; falling back to resilient local storage:", e);
     }
-    fs.writeFileSync(fullPath, buffer);
-    return storagePath;
   }
+
+  // Local storage fallback
+  const fullPath = path.join(LOCAL_STORAGE_DIR, storagePath);
+  const dir = path.dirname(fullPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(fullPath, buffer);
+  return storagePath;
 }
 
 export async function getContractFileBuffer(storagePath: string): Promise<Buffer | null> {
@@ -36,13 +40,12 @@ export async function getContractFileBuffer(storagePath: string): Promise<Buffer
       const file = bucket.file(storagePath);
       const [downloadedBuffer] = await file.download();
       return downloadedBuffer;
-    } catch (e) {
-      console.error("Storage download failed:", e);
-      return null;
+    } catch {
+      // If not in cloud bucket, check local storage
     }
-  } else {
-    const fullPath = path.join(LOCAL_STORAGE_DIR, storagePath);
-    if (!fs.existsSync(fullPath)) return null;
-    return fs.readFileSync(fullPath);
   }
+
+  const fullPath = path.join(LOCAL_STORAGE_DIR, storagePath);
+  if (!fs.existsSync(fullPath)) return null;
+  return fs.readFileSync(fullPath);
 }
