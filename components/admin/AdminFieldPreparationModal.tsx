@@ -146,6 +146,12 @@ export function AdminFieldPreparationModal({
         const page = await pdfDocRef.current.getPage(currentPage);
         if (isCancelled) return;
 
+        const unscaledViewport = page.getViewport({ scale: 1.0 });
+        setPageDimensions({
+          width: unscaledViewport.width,
+          height: unscaledViewport.height,
+        });
+
         const viewport = page.getViewport({ scale });
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -155,11 +161,6 @@ export function AdminFieldPreparationModal({
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
-
-        setPageDimensions({
-          width: page.view[2] - page.view[0],
-          height: page.view[3] - page.view[1],
-        });
 
         renderTask = page.render({
           canvasContext: context,
@@ -299,10 +300,12 @@ export function AdminFieldPreparationModal({
 
     window.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
 
     return () => {
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
@@ -330,6 +333,44 @@ export function AdminFieldPreparationModal({
 
     const clamped = clampCoords(targetPtX, targetPtY, currentPage);
     setCurrentCoords(clamped);
+  };
+
+  // Touch tap handling on mobile screens
+  const handlePageTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    if (touch) {
+      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    }
+  };
+
+  const handlePageTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchStartPosRef.current || didDragRef.current || !pageContainerRef.current) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+
+    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    const dt = Date.now() - touchStartPosRef.current.time;
+
+    // Clean tap: minimal movement and short duration
+    if (dx < 10 && dy < 10 && dt < 400) {
+      if (badgeRef.current && badgeRef.current.contains(e.target as Node)) {
+        return;
+      }
+      const rect = pageContainerRef.current.getBoundingClientRect();
+      const clickPixelX = touch.clientX - rect.left;
+      const clickPixelY = touch.clientY - rect.top;
+
+      const centeredPixelX = clickPixelX - (SIG_BOX_WIDTH_PT * scale) / 2;
+      const centeredPixelY = clickPixelY - (SIG_BOX_HEIGHT_PT * scale) / 2;
+
+      const targetPtX = Math.round(centeredPixelX / scale);
+      const targetPtY = Math.round(pageDimensions.height - centeredPixelY / scale - SIG_BOX_HEIGHT_PT);
+
+      const clamped = clampCoords(targetPtX, targetPtY, currentPage);
+      setCurrentCoords(clamped);
+    }
+    touchStartPosRef.current = null;
   };
 
   // Keyboard navigation for arrow key fine-tuning
@@ -486,6 +527,8 @@ export function AdminFieldPreparationModal({
             <div
               ref={pageContainerRef}
               onClick={handlePageClick}
+              onTouchStart={handlePageTouchStart}
+              onTouchEnd={handlePageTouchEnd}
               className="relative shadow-md border border-neutral-300 bg-white cursor-crosshair transition-shadow hover:shadow-lg"
               style={{
                 width: pageDimensions.width * scale,

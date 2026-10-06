@@ -46,9 +46,21 @@ export function AuditTimeline({ logs }: AuditTimelineProps) {
             </time>
           </div>
 
-          {log.metadata && Object.keys(log.metadata).length > 0 && (
+          {(log.ipAddress || log.userAgent || (log.metadata && Object.keys(log.metadata).length > 0)) && (
             <div className="mt-2 text-xs text-neutral-600 bg-neutral-50 p-2.5 border border-neutral-200 overflow-hidden space-y-2">
-              {Object.entries(log.metadata).map(([k, v]) => (
+              {log.ipAddress && (
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <span className="font-mono text-neutral-500">IP Address:</span>
+                  <span className="font-mono text-black font-medium">{log.ipAddress}</span>
+                </div>
+              )}
+              {log.userAgent && (
+                <div className="flex flex-col space-y-0.5 min-w-0 text-[11px]">
+                  <span className="font-mono text-neutral-500">Device / Browser:</span>
+                  <span className="text-neutral-700 truncate" title={log.userAgent}>{log.userAgent}</span>
+                </div>
+              )}
+              {log.metadata && Object.entries(log.metadata).map(([k, v]) => (
                 <div key={k} className="flex flex-col space-y-0.5 min-w-0">
                   <span className="font-mono text-neutral-500 text-[11px]">{k}:</span>
                   {k === 'filePath' && typeof v === 'string' ? (

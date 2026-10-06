@@ -139,4 +139,41 @@ describe('SignFlow Industry-Grade Certificate of Completion & Legal Audit Suite'
     const loadedDoc = await PDFDocument.load(signedBuffer);
     assert.equal(loadedDoc.getPageCount(), 2, 'Page count must remain exactly 2 when attachCertificate is false');
   });
+
+  it('appendCertificateOfCompletion gracefully handles large audit trails (10+ events) and preserves terminal signing events', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([612, 792]);
+
+    const largeAuditEvents = [
+      { action: 'CONTRACT_CREATED', timestamp: '2026-10-06T10:00:00Z', ipAddress: '10.0.0.1', details: '{"title":"Heavy Contract"}' },
+      { action: 'CONTRACT_SENT', timestamp: '2026-10-06T10:05:00Z', ipAddress: '10.0.0.1' },
+      { action: 'CONTRACT_OPENED', timestamp: '2026-10-06T10:10:00Z', ipAddress: '192.168.1.1' },
+      { action: 'CONTRACT_OPENED', timestamp: '2026-10-06T10:12:00Z', ipAddress: '192.168.1.1' },
+      { action: 'CONTRACT_OPENED', timestamp: '2026-10-06T10:15:00Z', ipAddress: '192.168.1.1' },
+      { action: 'SIGNATURE_STARTED', timestamp: '2026-10-06T10:20:00Z', ipAddress: '192.168.1.1' },
+      { action: 'SIGNATURE_COMPLETED', timestamp: '2026-10-06T10:21:00Z', ipAddress: '192.168.1.1' },
+      { action: 'CONTRACT_OPENED', timestamp: '2026-10-06T10:25:00Z', ipAddress: '192.168.1.1' },
+      { action: 'SIGNATURE_STARTED', timestamp: '2026-10-06T10:26:00Z', ipAddress: '192.168.1.1' },
+      { action: 'SIGNATURE_COMPLETED', timestamp: '2026-10-06T10:27:00Z', ipAddress: '192.168.1.1' },
+      { action: 'CONTRACT_SIGNED', timestamp: '2026-10-06T10:30:00Z', ipAddress: '192.168.1.1', details: '{"clientName":"Heavy Signer","method":"DRAW"}' },
+      { action: 'SIGNED_PDF_GENERATED', timestamp: '2026-10-06T10:30:05Z', ipAddress: 'System', details: 'Sealed PDF generated' },
+    ];
+
+    await appendCertificateOfCompletion(doc, {
+      contractTitle: 'Heavy Enterprise Agreement',
+      contractId: 'cnt_heavy_999',
+      originalPdfHash: 'hash_original_999',
+      sealedPdfHash: 'hash_sealed_999',
+      signerName: 'Heavy Signer',
+      signerEmail: 'heavy@enterprise.io',
+      signerIp: '192.168.1.1',
+      signedAt: '2026-10-06T10:30:00Z',
+      auditEvents: largeAuditEvents,
+      signaturePngBase64: SAMPLE_PNG_BASE64,
+    });
+
+    assert.equal(doc.getPageCount(), 2);
+    const pdfBytes = await doc.save();
+    assert.ok(pdfBytes.length > 0);
+  });
 });

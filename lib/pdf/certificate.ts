@@ -315,6 +315,27 @@ export async function appendCertificateOfCompletion(
         },
       ];
 
+  // Clean and format details string (parsing JSON metadata if present)
+  const cleanEventDetails = (rawDetails?: string, fallbackUserAgent?: string): string => {
+    if (!rawDetails) {
+      return fallbackUserAgent ? truncateText(fallbackUserAgent, 40) : 'Verified secure session';
+    }
+    if (rawDetails.startsWith('{') && rawDetails.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(rawDetails);
+        const parts = Object.entries(parsed)
+          .filter(([k]) => k !== 'filePath')
+          .map(([k, v]) => `${k}: ${v}`);
+        if (parts.length > 0) {
+          return truncateText(parts.join(' | '), 42);
+        }
+      } catch {
+        // use raw if JSON parse fails
+      }
+    }
+    return truncateText(rawDetails, 42);
+  };
+
   // Action name friendly formatter
   const formatActionName = (action: string): string => {
     switch (action) {
@@ -328,11 +349,52 @@ export async function appendCertificateOfCompletion(
       case 'CONTRACT_DOWNLOADED': return 'Document Downloaded';
       case 'CONTRACT_REVOKED': return 'Contract Revoked';
       case 'CONTRACT_EXPIRED': return 'Contract Expired';
+      case 'AUDIT_SUMMARY': return 'Audit Records';
       default: return action;
     }
   };
 
-  for (const event of events.slice(0, 6)) { // Render up to 6 key chronological events cleanly
+  // Select up to maxRows events, deduplicating consecutive identical actions
+  // and guaranteeing that final completion events (CONTRACT_SIGNED, SIGNED_PDF_GENERATED) are never lost
+  const selectEventsForCertificate = (raw: CertificateAuditEntry[], maxRows = 12): CertificateAuditEntry[] => {
+    if (!raw || raw.length === 0) return [];
+    if (raw.length <= maxRows) return raw;
+
+    // Deduplicate consecutive repeated actions (e.g. repeated CONTRACT_OPENED)
+    const deduped: CertificateAuditEntry[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const curr = raw[i];
+      const prev = deduped[deduped.length - 1];
+      if (prev && prev.action === curr.action && i < raw.length - 1) {
+        continue;
+      }
+      deduped.push(curr);
+    }
+
+    if (deduped.length <= maxRows) return deduped;
+
+    // When events still exceed maxRows, preserve initial events and terminal signing events
+    const headCount = 4;
+    const tailCount = Math.min(deduped.length - headCount, maxRows - headCount - 1);
+    const head = deduped.slice(0, headCount);
+    const tail = deduped.slice(deduped.length - tailCount);
+    const skippedCount = deduped.length - headCount - tailCount;
+
+    return [
+      ...head,
+      {
+        action: 'AUDIT_SUMMARY',
+        timestamp: head[head.length - 1]?.timestamp || params.signedAt,
+        ipAddress: 'System',
+        details: `[+${skippedCount} intermediate session events recorded in log]`,
+      },
+      ...tail,
+    ];
+  };
+
+  const displayEvents = selectEventsForCertificate(events, 12);
+
+  for (const event of displayEvents) {
     page.drawText(formatActionName(event.action), {
       x: colActionX,
       y: currentY,
@@ -357,8 +419,8 @@ export async function appendCertificateOfCompletion(
       color: rgb(0.2, 0.2, 0.2),
     });
 
-    const eventDetails = event.details || (event.userAgent ? truncateText(event.userAgent, 35) : 'Verified secure session');
-    page.drawText(truncateText(eventDetails, 42), {
+    const eventDetails = cleanEventDetails(event.details, event.userAgent);
+    page.drawText(eventDetails, {
       x: colDetailsX,
       y: currentY,
       size: 7,
@@ -377,11 +439,12 @@ export async function appendCertificateOfCompletion(
   }
 
   // --- 5. Legal Disclosure & Statutory Compliance Clause ---
-  currentY -= 8;
+  // Anchored cleanly above the footer to maintain balanced legal document proportions
   const legalBoxHeight = 56;
+  const legalBoxY = 52;
   page.drawRectangle({
     x: marginX,
-    y: currentY - legalBoxHeight + 8,
+    y: legalBoxY,
     width: contentWidth,
     height: legalBoxHeight,
     borderColor: rgb(0, 0, 0),
@@ -391,7 +454,7 @@ export async function appendCertificateOfCompletion(
 
   page.drawText('LEGAL DISCLOSURE & STATUTORY COMPLIANCE STATEMENT', {
     x: marginX + 10,
-    y: currentY - 5,
+    y: legalBoxY + 43,
     size: 7.5,
     font: helveticaBold,
     color: rgb(0, 0, 0),
@@ -402,10 +465,10 @@ export async function appendCertificateOfCompletion(
   const legalText3 = 'The cryptographic hashes, IP addresses, and chronological audit trail recorded herein constitute authentic,';
   const legalText4 = 'tamper-evident, and court-admissible electronic proof of the execution and non-repudiation of this contract.';
 
-  page.drawText(legalText1, { x: marginX + 10, y: currentY - 18, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
-  page.drawText(legalText2, { x: marginX + 10, y: currentY - 28, size: 6.8, font: helveticaBold, color: rgb(0, 0, 0) });
-  page.drawText(legalText3, { x: marginX + 10, y: currentY - 38, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
-  page.drawText(legalText4, { x: marginX + 10, y: currentY - 48, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+  page.drawText(legalText1, { x: marginX + 10, y: legalBoxY + 31, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+  page.drawText(legalText2, { x: marginX + 10, y: legalBoxY + 21, size: 6.8, font: helveticaBold, color: rgb(0, 0, 0) });
+  page.drawText(legalText3, { x: marginX + 10, y: legalBoxY + 11, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+  page.drawText(legalText4, { x: marginX + 10, y: legalBoxY + 1, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
 
   // --- 6. Document Footer ---
   const footerY = 32;
