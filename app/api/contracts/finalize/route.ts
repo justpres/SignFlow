@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getContractByTokenHash, saveContract, addAuditLog } from '@/lib/firebase/service';
+import { getContractByTokenHash, saveContract, addAuditLog, getAuditLogsForContract } from '@/lib/firebase/service';
 import { hashSigningToken } from '@/lib/contracts/token';
 import { getContractFileBuffer, uploadContractFile } from '@/lib/firebase/storage';
 import { generateSignedPdf } from '@/lib/pdf/generator';
@@ -78,14 +78,49 @@ export async function POST(request: Request) {
     const finalDateX = dateX ?? placement?.dateX ?? contract.dateX;
     const finalDateY = dateY ?? placement?.dateY ?? contract.dateY;
 
-    // Generate signed PDF with pdf-lib directly on the contract letter
+    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+                      request.headers.get('x-real-ip') ||
+                      '127.0.0.1';
+    const userAgent = request.headers.get('user-agent') || 'Unknown Device';
+
+    // Fetch existing chronological audit events for official Certificate of Completion
+    const existingLogs = await getAuditLogsForContract(contract.id);
+    const auditEvents = existingLogs.map((log) => ({
+      action: log.action,
+      timestamp: log.timestamp,
+      ipAddress: log.ipAddress,
+      userAgent: log.userAgent,
+      details: log.metadata ? JSON.stringify(log.metadata) : undefined,
+    }));
+
+    auditEvents.push({
+      action: 'CONTRACT_SIGNED',
+      timestamp: nowIso,
+      ipAddress,
+      userAgent,
+      details: `Signed by ${clientName} (${signatureMethod || 'DRAW'})`,
+    });
+    auditEvents.push({
+      action: 'SIGNED_PDF_GENERATED',
+      timestamp: nowIso,
+      ipAddress,
+      userAgent,
+      details: 'Official Certificate of Completion & sealed record generated',
+    });
+
+    // Generate signed PDF with pdf-lib: clean signature stamp on contract line + appended Certificate of Completion
     const signedPdfBuffer = await generateSignedPdf({
       originalPdfBuffer,
       clientName,
+      clientEmail: contract.clientEmail,
       signaturePngBase64: signatureDataUrl,
       contractId: contract.id,
       contractTitle: contract.title,
       signedAtDate: nowIso,
+      ipAddress,
+      userAgent,
+      signatureMethod: signatureMethod || 'DRAW',
+      auditEvents,
       signaturePage: finalPage,
       signatureX: finalSigX,
       signatureY: finalSigY,
@@ -93,6 +128,7 @@ export async function POST(request: Request) {
       nameY: finalNameY,
       dateX: finalDateX,
       dateY: finalDateY,
+      attachCertificate: true,
     });
 
     // Store signed PDF as separate immutable artifact
@@ -118,16 +154,16 @@ export async function POST(request: Request) {
 
     await saveContract(contract);
 
-    // Audit logs
+    // Audit logs with client IP address and device telemetry
     await addAuditLog(contract.id, 'SIGNATURE_COMPLETED', {
       clientName,
       signatureMethod,
       signaturePage: finalPage,
       signatureX: finalSigX,
       signatureY: finalSigY,
-    });
-    await addAuditLog(contract.id, 'CONTRACT_SIGNED', { clientName, signedAt: nowIso });
-    await addAuditLog(contract.id, 'SIGNED_PDF_GENERATED', { filePath: signedStoragePath });
+    }, ipAddress, userAgent);
+    await addAuditLog(contract.id, 'CONTRACT_SIGNED', { clientName, signedAt: nowIso }, ipAddress, userAgent);
+    await addAuditLog(contract.id, 'SIGNED_PDF_GENERATED', { filePath: signedStoragePath }, ipAddress, userAgent);
 
     // Send Admin Notifications (Email & Telegram).
     // Note: Notification errors must not prevent contract finalization

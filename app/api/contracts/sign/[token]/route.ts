@@ -31,7 +31,11 @@ export async function GET(
     contract.status = 'OPENED';
     contract.openedAt = new Date().toISOString();
     await saveContract(contract);
-    await addAuditLog(contract.id, 'CONTRACT_OPENED');
+    const ipAddress = _request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+                      _request.headers.get('x-real-ip') ||
+                      '127.0.0.1';
+    const userAgent = _request.headers.get('user-agent') || 'Browser Client';
+    await addAuditLog(contract.id, 'CONTRACT_OPENED', undefined, ipAddress, userAgent);
   }
 
   // Load PDF base64 if available so client viewer can render safely

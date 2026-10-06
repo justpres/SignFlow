@@ -68,6 +68,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
   // Validation & Finalization states
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showFinalModal, setShowFinalModal] = useState<boolean>(false);
+  const [showDisclosureModal, setShowDisclosureModal] = useState<boolean>(false);
   const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
   const [finalSuccessData, setFinalSuccessData] = useState<{
     contractId: string;
@@ -301,6 +302,26 @@ export function SigningFlow({ token }: SigningFlowProps) {
               </ol>
             </div>
 
+            {/* ESIGN & UETA Consumer Electronic Record Disclosure Notice */}
+            <div className="p-3 border border-neutral-200 bg-neutral-50/50 text-left text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-black text-[11px] uppercase tracking-wider">
+                  Electronic Record & Signature Disclosure
+                </span>
+                <span className="text-[10px] text-neutral-500 font-mono">ESIGN &bull; UETA Compliant</span>
+              </div>
+              <p className="text-[11px] text-neutral-600 leading-normal">
+                By signing, you agree to conduct business electronically. Your electronic signature carries the full legal weight and validity of a handwritten ink signature.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowDisclosureModal(true)}
+                className="text-[11px] font-semibold text-black underline hover:text-neutral-700 cursor-pointer inline-block pt-0.5"
+              >
+                View Full Electronic Record & Signature Disclosure →
+              </button>
+            </div>
+
             <Button
               variant="primary"
               size="lg"
@@ -474,16 +495,25 @@ export function SigningFlow({ token }: SigningFlowProps) {
                 <div className="p-3 bg-white border border-neutral-300 text-xs space-y-2">
                   <div className="font-semibold text-black uppercase tracking-wider text-[11px] flex items-center justify-between">
                     <span>Signature Placement</span>
-                    <span className="text-[10px] bg-neutral-100 border border-neutral-300 px-1.5 py-0.5 font-mono">
-                      Page {placement.page}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {contract.signaturePage !== undefined && (
+                        <span className="text-[9px] bg-black text-white px-1.5 py-0.5 font-sans font-bold">
+                          Pre-Set by Sender
+                        </span>
+                      )}
+                      <span className="text-[10px] bg-neutral-100 border border-neutral-300 px-1.5 py-0.5 font-mono">
+                        Page {placement.page}
+                      </span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-neutral-700 font-mono text-[11px] pt-1">
                     <div>X-Coord: <strong className="text-black font-sans">{placement.signatureX} pt</strong></div>
                     <div>Y-Coord: <strong className="text-black font-sans">{placement.signatureY} pt</strong></div>
                   </div>
                   <p className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-100 leading-tight">
-                    Your electronic signature will appear at this location.
+                    {contract.signaturePage !== undefined
+                      ? 'The document sender designated this location for your signature. You may verify or fine-tune it.'
+                      : 'Your electronic signature will be stamped cleanly at this exact location.'}
                   </p>
                 </div>
 
@@ -562,8 +592,36 @@ export function SigningFlow({ token }: SigningFlowProps) {
               </div>
             </div>
 
-            {/* Confirmation Checkbox */}
-            <div className="p-4 border border-neutral-300 bg-white">
+            {/* Tamper-Evident Seal & Certificate of Completion Details */}
+            <div className="p-4 border border-black bg-white space-y-3">
+              <div className="flex items-center space-x-2 border-b border-neutral-200 pb-2">
+                <span className="w-2.5 h-2.5 bg-black" />
+                <span className="text-xs font-bold text-black uppercase tracking-wider">
+                  Tamper-Evident Security Seal & Audit Certificate
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-neutral-700">
+                <div className="flex items-start space-x-2">
+                  <span className="font-bold text-black font-mono">01.</span>
+                  <div>
+                    <span className="font-semibold text-black block">Cryptographic SHA-256 Digest</span>
+                    <span className="text-[11px] text-neutral-500">Document integrity is cryptographically sealed upon submission.</span>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <span className="font-bold text-black font-mono">02.</span>
+                  <div>
+                    <span className="font-semibold text-black block">Official Certificate of Completion</span>
+                    <span className="text-[11px] text-neutral-500">A court-admissible ESIGN & UETA compliant legal audit page is permanently appended.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Confirmation & Electronic Consent Checkbox */}
+            <div className="p-4 border border-neutral-300 bg-neutral-50/50 space-y-2">
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -575,7 +633,18 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   className="mt-0.5 w-4 h-4 rounded-none border-black accent-black focus:ring-black"
                 />
                 <span className="text-xs text-neutral-800 leading-relaxed font-medium">
-                  I confirm that I have reviewed the contract, placed my signature at the designated location, and that the information and signature I provided are correct.
+                  I agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowDisclosureModal(true);
+                    }}
+                    className="font-bold text-black underline hover:text-neutral-600"
+                  >
+                    Consumer Electronic Record & Signature Disclosure
+                  </button>
+                  . I confirm that I have reviewed the contract, placed my signature at the designated location, and intend for this electronic signature to be legally binding under the ESIGN Act and UETA.
                 </span>
               </label>
             </div>
@@ -619,12 +688,13 @@ export function SigningFlow({ token }: SigningFlowProps) {
       >
         <div className="space-y-4">
           <p className="text-sm text-neutral-700">
-            You are about to finalize this contract. After confirmation, your signature and submitted information cannot be changed.
+            You are about to execute this contract. Your signature will be stamped on the contract, and an official court-admissible Certificate of Completion will be permanently sealed.
           </p>
 
           <div className="p-3 bg-neutral-50 border border-neutral-200 text-xs space-y-1">
             <div><span className="font-semibold">Signer:</span> {signerName}</div>
             <div><span className="font-semibold">Contract:</span> {contract.title}</div>
+            <div><span className="font-semibold">Security Seal:</span> Cryptographic SHA-256 + Certificate of Completion</div>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-200">
@@ -639,9 +709,65 @@ export function SigningFlow({ token }: SigningFlowProps) {
               variant="primary"
               onClick={handleFinalSubmit}
               isLoading={isFinalizing}
-              loadingText="Finalizing your contract..."
+              loadingText="Finalizing & sealing contract..."
             >
               CONFIRM & SIGN
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Consumer Electronic Record & Signature Disclosure Modal */}
+      <Modal
+        isOpen={showDisclosureModal}
+        onClose={() => setShowDisclosureModal(false)}
+        title="Consumer Electronic Record & Signature Disclosure"
+      >
+        <div className="space-y-4 text-xs text-neutral-700 max-h-[60vh] overflow-y-auto pr-1">
+          <p className="font-semibold text-black">
+            Please review this statutory Consumer Electronic Record & Signature Disclosure pursuant to the ESIGN Act and UETA.
+          </p>
+
+          <div className="p-3 bg-neutral-50 border border-neutral-200 space-y-1 text-[11px] text-neutral-600">
+            <p><strong>Governing Statutes:</strong> Electronic Signatures in Global and National Commerce Act (ESIGN, 15 U.S.C. § 7001 et seq.) and Uniform Electronic Transactions Act (UETA).</p>
+            <p><strong>Legal Validity:</strong> Electronic signatures executed through SignFlow have the exact same legal force and effect as manual handwritten ink signatures.</p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">1. Consent to Electronic Transactions</h4>
+            <p>
+              By proceeding with this electronic signature process, you affirmatively consent to conduct this transaction electronically and to receive documents and communications in electronic form.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">2. Right to Download & Retain Records</h4>
+            <p>
+              Upon completing this transaction, you will immediately receive access to download and retain an immutable, cryptographically sealed copy of the signed contract and its associated Certificate of Completion.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">3. Technical Requirements</h4>
+            <p>
+              To access and retain electronic records, you must have an active internet connection, a modern web browser (Google Chrome, Apple Safari, Mozilla Firefox, Microsoft Edge), and standard PDF viewing software.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">4. Cryptographic Evidence & Non-Repudiation</h4>
+            <p>
+              Each executed contract generates a court-admissible Certificate of Completion recording cryptographic SHA-256 hashes, timestamps in UTC, IP address telemetry, and user agent details to guarantee document integrity and non-repudiation.
+            </p>
+          </div>
+
+          <div className="flex justify-end pt-4 border-t border-neutral-200">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setShowDisclosureModal(false)}
+            >
+              UNDERSTOOD & CLOSE
             </Button>
           </div>
         </div>

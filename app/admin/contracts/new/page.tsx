@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DocumentIcon, CopyIcon, CheckIcon } from '@/components/ui/Icons';
+import { AdminFieldPreparationModal } from '@/components/admin/AdminFieldPreparationModal';
 
 export default function NewContractPage() {
 
@@ -24,6 +25,9 @@ export default function NewContractPage() {
   const [signatureX, setSignatureX] = useState('');
   const [signatureY, setSignatureY] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [isPrepModalOpen, setIsPrepModalOpen] = useState(false);
+  const [showManualCoords, setShowManualCoords] = useState(false);
 
   // Flow & submission states
   const [isLoading, setIsLoading] = useState(false);
@@ -39,17 +43,26 @@ export default function NewContractPage() {
     if (selected.type !== 'application/pdf') {
       setError('Please select a valid PDF file.');
       setFile(null);
+      setFileBase64(null);
       return;
     }
 
     if (selected.size > 20 * 1024 * 1024) {
       setError('File size must be under 20MB.');
       setFile(null);
+      setFileBase64(null);
       return;
     }
 
     setError(null);
     setFile(selected);
+
+    // Read base64 for instant interactive visual signature preparation
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFileBase64(reader.result as string);
+    };
+    reader.readAsDataURL(selected);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -205,7 +218,13 @@ export default function NewContractPage() {
                   <p className="text-xs text-neutral-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
                   <button
                     type="button"
-                    onClick={() => setFile(null)}
+                    onClick={() => {
+                      setFile(null);
+                      setFileBase64(null);
+                      setSignaturePage('');
+                      setSignatureX('');
+                      setSignatureY('');
+                    }}
                     className="text-xs text-black underline font-medium cursor-pointer"
                   >
                     Replace Document
@@ -264,38 +283,138 @@ export default function NewContractPage() {
 
           {/* Step 4: Signature Placement on Letter */}
           <div className="space-y-4 pt-4 border-t border-neutral-100">
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-black">4. Signature Placement on Letter</h3>
-              <p className="text-xs text-neutral-500 mt-0.5">
-                The client&apos;s electronic signature and printed legal name will be automatically stamped into the document&apos;s signature blank (_____).
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-black">4. Signature Placement on Document</h3>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Pre-determine where your client must sign, or leave unset to let them place their signature freely.
+                </p>
+              </div>
+
+              {file && (
+                <Button
+                  type="button"
+                  variant={signaturePage ? 'outline' : 'primary'}
+                  size="sm"
+                  onClick={() => setIsPrepModalOpen(true)}
+                  className="shrink-0 text-xs"
+                >
+                  {signaturePage ? 'Change Signature Location' : 'Prepare Signature Location (Visual)'}
+                </Button>
+              )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input
-                label="Target Page"
-                type="number"
-                min={1}
-                value={signaturePage}
-                onChange={(e) => setSignaturePage(e.target.value)}
-                helperText="Page where signature line is located (leave empty for last page)."
-                optional
-              />
-              <Input
-                label="Horizontal Position (X)"
-                type="number"
-                value={signatureX}
-                onChange={(e) => setSignatureX(e.target.value)}
-                helperText="Left distance in points (default: 70)."
-                optional
-              />
-              <Input
-                label="Vertical Position (Y)"
-                type="number"
-                value={signatureY}
-                onChange={(e) => setSignatureY(e.target.value)}
-                helperText="Bottom distance in points (default: 115)."
-                optional
-              />
+
+            {!file ? (
+              <div className="p-4 border border-dashed border-neutral-300 bg-neutral-50/50 text-xs text-neutral-500 text-center">
+                Upload a contract PDF in Step 1 to visually set signature location.
+              </div>
+            ) : signaturePage ? (
+              <div className="p-4 bg-white border border-neutral-300 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2 h-2 bg-black rounded-full" />
+                    <span className="text-xs font-bold text-black uppercase tracking-wider">
+                      Pre-Assigned Location Set
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono bg-neutral-100 border border-neutral-300 px-2 py-0.5">
+                    Page {signaturePage} • ({signatureX || 70} pt, {signatureY || 115} pt)
+                  </span>
+                </div>
+
+                <p className="text-xs text-neutral-600">
+                  The client&apos;s signing session will automatically snap to <strong>Page {signaturePage}</strong> at coordinates <strong>({signatureX || 70} pt, {signatureY || 115} pt)</strong>.
+                </p>
+
+                <div className="flex items-center gap-3 pt-2 border-t border-neutral-100">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsPrepModalOpen(true)}
+                    className="text-xs"
+                  >
+                    Adjust on Document
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignaturePage('');
+                      setSignatureX('');
+                      setSignatureY('');
+                    }}
+                    className="text-xs text-neutral-600 hover:text-black underline font-medium cursor-pointer"
+                  >
+                    Clear (Allow Client Free Placement)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-neutral-50 border border-neutral-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-800">
+                    Free Placement (Default)
+                  </span>
+                  <span className="text-[11px] text-neutral-500 font-mono">
+                    Client chooses position
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500">
+                  No fixed location designated. The client can freely drag or tap to position their signature anywhere on the document.
+                </p>
+                <div className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsPrepModalOpen(true)}
+                    className="text-xs"
+                  >
+                    Open Visual Placement Tool
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Subtle Collapsible Manual Coordinates Accordion for Advanced Power Users */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowManualCoords(!showManualCoords)}
+                className="text-[11px] text-neutral-400 hover:text-neutral-700 underline cursor-pointer"
+              >
+                {showManualCoords ? '− Hide manual point inputs' : '+ Advanced: Manual point coordinates override'}
+              </button>
+
+              {showManualCoords && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 mt-2 border-t border-neutral-100">
+                  <Input
+                    label="Target Page"
+                    type="number"
+                    min={1}
+                    value={signaturePage}
+                    onChange={(e) => setSignaturePage(e.target.value)}
+                    helperText="Target PDF page number"
+                    optional
+                  />
+                  <Input
+                    label="Horizontal Position (X)"
+                    type="number"
+                    value={signatureX}
+                    onChange={(e) => setSignatureX(e.target.value)}
+                    helperText="Left distance in points (default: 70)"
+                    optional
+                  />
+                  <Input
+                    label="Vertical Position (Y)"
+                    type="number"
+                    value={signatureY}
+                    onChange={(e) => setSignatureY(e.target.value)}
+                    helperText="Bottom distance in points (default: 115)"
+                    optional
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -345,6 +464,30 @@ export default function NewContractPage() {
           </div>
         </form>
       </Card>
+
+      {/* Admin Visual Signature Location Preparation Modal */}
+      {isPrepModalOpen && fileBase64 && (
+        <AdminFieldPreparationModal
+          isOpen={isPrepModalOpen}
+          onClose={() => setIsPrepModalOpen(false)}
+          pdfBase64={fileBase64}
+          initialPlacement={{
+            page: signaturePage ? Number(signaturePage) : undefined,
+            signatureX: signatureX ? Number(signatureX) : undefined,
+            signatureY: signatureY ? Number(signatureY) : undefined,
+          }}
+          onSavePlacement={(p) => {
+            setSignaturePage(String(p.page));
+            setSignatureX(String(p.signatureX));
+            setSignatureY(String(p.signatureY));
+          }}
+          onClearPlacement={() => {
+            setSignaturePage('');
+            setSignatureX('');
+            setSignatureY('');
+          }}
+        />
+      )}
     </div>
   );
 }
