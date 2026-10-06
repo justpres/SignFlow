@@ -483,7 +483,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                     <div>Y-Coord: <strong className="text-black font-sans">{placement.signatureY} pt</strong></div>
                   </div>
                   <p className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-100 leading-tight">
-                    Your electronic signature, printed name, and date stamp will appear at this location.
+                    Your electronic signature will appear at this location.
                   </p>
                 </div>
 

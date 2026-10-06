@@ -20,7 +20,7 @@ const SIG_BOX_HEIGHT_PT = 50;
 export function SignaturePlacementViewer({
   pdfBase64,
   signatureDataUrl,
-  signerName,
+  signerName: _signerName,
   placement,
   onPlacementChange,
   defaultPlacementPage,
@@ -558,28 +558,6 @@ export function SignaturePlacementViewer({
                     ) : (
                       <span className="text-[10px] text-neutral-400 font-mono">Signature Blank</span>
                     )}
-                  </div>
-
-                  {/* Printed Signer Legal Name & Digital Verification Stamp below the signature line */}
-                  <div className="mt-1 px-0.5 pointer-events-none select-none">
-                    <div
-                      className="font-bold text-black truncate tracking-tight"
-                      style={{
-                        fontSize: `${Math.max(9, Math.round(11 * scaleFactor))}px`,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {signerName}
-                    </div>
-                    <div
-                      className="text-neutral-500 font-mono truncate"
-                      style={{
-                        fontSize: `${Math.max(7, Math.round(8 * scaleFactor))}px`,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      Digitally signed &bull; SignFlow Verified
-                    </div>
                   </div>
                 </div>
               )}

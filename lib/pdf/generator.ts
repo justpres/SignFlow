@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 
 interface FinalizePdfParams {
   originalPdfBuffer: Buffer;
@@ -17,26 +17,18 @@ interface FinalizePdfParams {
 }
 
 /**
- * Places the electronic signature and client legal name directly ONTO the existing contract page
- * exactly above the signature line (_____), without creating extra pages.
+ * Places ONLY the electronic signature directly ONTO the existing contract page
+ * exactly above the signature line (_____), without adding extra text (name, dates, audit tags)
+ * or creating extra pages.
  */
 export async function generateSignedPdf({
   originalPdfBuffer,
-  clientName,
   signaturePngBase64,
-  contractId,
-  signedAtDate,
   signaturePage,
   signatureX,
   signatureY,
-  nameX,
-  nameY,
-  dateX,
-  dateY,
 }: FinalizePdfParams): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(originalPdfBuffer);
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   // Decode signature image PNG
   const base64Data = signaturePngBase64.replace(/^data:image\/png;base64,/, '');
@@ -52,8 +44,8 @@ export async function generateSignedPdf({
   const page = pdfDoc.getPage(targetPageIndex);
 
   // Position directly over standard signature line (_____):
-  // X: Defaults to left margin (70) or admin-specified placement
-  // Y: Defaults to signature line area (115) or admin-specified placement
+  // X: Defaults to left margin (70) or admin/user-specified placement
+  // Y: Defaults to signature line area (115) or admin/user-specified placement
   const posX = signatureX !== undefined ? signatureX : 70;
   const posY = signatureY !== undefined ? signatureY : 115;
 
@@ -62,36 +54,12 @@ export async function generateSignedPdf({
   const sigBoxHeight = 50;
   const sigDims = signatureImage.scaleToFit(sigBoxWidth, sigBoxHeight);
 
-  // 1. Stamp the electronic signature directly on the signature line (centered in 170x50 box)
+  // Stamp ONLY the electronic signature directly on the signature line (centered in 170x50 box)
   page.drawImage(signatureImage, {
     x: posX + (sigBoxWidth - sigDims.width) / 2,
     y: posY + (sigBoxHeight - sigDims.height) / 2,
     width: sigDims.width,
     height: sigDims.height,
-  });
-
-  // 2. Auto-input the client's printed full legal name right below the signature line
-  const printNameX = nameX !== undefined ? nameX : posX;
-  const printNameY = nameY !== undefined ? nameY : Math.max(posY - 18, 40);
-
-  page.drawText(clientName, {
-    x: printNameX,
-    y: printNameY,
-    size: 11,
-    font: helveticaBold,
-    color: rgb(0, 0, 0),
-  });
-
-  // 3. Add digital audit stamp and reference code right beneath the signer's name
-  const printDateX = dateX !== undefined ? dateX : printNameX;
-  const printDateY = dateY !== undefined ? dateY : Math.max(printNameY - 12, 25);
-
-  page.drawText(`Digitally signed: ${new Date(signedAtDate).toLocaleDateString()} | ID: ${contractId}`, {
-    x: printDateX,
-    y: printDateY,
-    size: 8,
-    font: helvetica,
-    color: rgb(0.25, 0.25, 0.25),
   });
 
   const finalPdfBytes = await pdfDoc.save();
