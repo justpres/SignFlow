@@ -140,10 +140,6 @@ export function SigningFlow({ token }: SigningFlowProps) {
       setValidationError('Please use the ✍ Pen / Sign button to draw your signature on the document first.');
       return;
     }
-    if (!signerName.trim()) {
-      setValidationError('Please enter your full legal name before completing.');
-      return;
-    }
     setValidationError(null);
     setAgreedToTerms(false);
     setShowAreYouSureModal(true);
@@ -151,6 +147,10 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
   // Final submit handler
   const handleFinalSubmit = async () => {
+    if (!signerName.trim()) {
+      setValidationError('Please enter your full legal name before completing.');
+      return;
+    }
     if (!agreedToTerms) {
       setValidationError('You must agree to the contract terms and legal signature disclosure before sealing.');
       return;
@@ -171,6 +171,74 @@ export function SigningFlow({ token }: SigningFlowProps) {
       const targetSigY = signaturePlacement?.y ?? contract?.signatureY ?? 115;
       const targetWidth = signaturePlacement?.width ?? 170;
       const targetHeight = signaturePlacement?.height ?? 50;
+
+      const baseFields = (contract?.fields && contract.fields.length > 0)
+        ? contract.fields.map((f) => {
+            if (f.type === 'SIGNATURE') {
+              return {
+                ...f,
+                page: targetPage,
+                x: targetSigX,
+                y: targetSigY,
+                width: targetWidth,
+                height: targetHeight,
+                value: signatureDataUrl,
+              };
+            }
+            if (f.type === 'DATE') {
+              return {
+                ...f,
+                page: targetPage,
+                value: today,
+              };
+            }
+            return f;
+          })
+        : [
+            {
+              id: 'field-fast-sig',
+              type: 'SIGNATURE' as const,
+              page: targetPage,
+              x: targetSigX,
+              y: targetSigY,
+              width: targetWidth,
+              height: targetHeight,
+              value: signatureDataUrl,
+              label: 'Client Signature',
+              required: true,
+            },
+            {
+              id: 'field-fast-date',
+              type: 'DATE' as const,
+              page: targetPage,
+              x: contract?.dateX ?? targetSigX,
+              y: contract?.dateY ?? Math.max(targetSigY - 35, 20),
+              width: 110,
+              height: 28,
+              value: today,
+              label: 'Date Signed',
+              required: true,
+            },
+          ];
+
+      const hasSigInBase = baseFields.some((f) => f.type === 'SIGNATURE');
+      const submissionFields = hasSigInBase
+        ? baseFields
+        : [
+            ...baseFields,
+            {
+              id: 'field-fast-sig',
+              type: 'SIGNATURE' as const,
+              page: targetPage,
+              x: targetSigX,
+              y: targetSigY,
+              width: targetWidth,
+              height: targetHeight,
+              value: signatureDataUrl,
+              label: 'Client Signature',
+              required: true,
+            },
+          ];
 
       const res = await fetch('/api/contracts/finalize', {
         method: 'POST',
@@ -196,32 +264,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
             dateX: contract?.dateX ?? targetSigX,
             dateY: contract?.dateY ?? Math.max(targetSigY - 35, 20),
           },
-          fields: [
-            {
-              id: 'field-fast-sig',
-              type: 'SIGNATURE',
-              page: targetPage,
-              x: targetSigX,
-              y: targetSigY,
-              width: targetWidth,
-              height: targetHeight,
-              value: signatureDataUrl,
-              label: 'Client Signature',
-              required: true,
-            },
-            {
-              id: 'field-fast-date',
-              type: 'DATE',
-              page: targetPage,
-              x: contract?.dateX ?? targetSigX,
-              y: contract?.dateY ?? Math.max(targetSigY - 35, 20),
-              width: 110,
-              height: 28,
-              value: today,
-              label: 'Date Signed',
-              required: true,
-            },
-          ],
+          fields: submissionFields,
         }),
       });
 
@@ -381,14 +424,26 @@ export function SigningFlow({ token }: SigningFlowProps) {
           </div>
 
           {/* Contract & Signer Summary */}
-          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-2">
-            <div className="flex justify-between border-b border-neutral-200 pb-1">
+          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-2.5">
+            <div className="flex justify-between border-b border-neutral-200 pb-1.5">
               <span className="text-neutral-500 font-medium">Contract Document:</span>
               <span className="font-bold text-black">{contract.title}</span>
             </div>
-            <div className="flex justify-between border-b border-neutral-200 pb-1">
-              <span className="text-neutral-500 font-medium">Full Legal Signer:</span>
-              <span className="font-bold text-black">{signerName}</span>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 border-b border-neutral-200 pb-2">
+              <label htmlFor="modal-signer-name" className="text-neutral-600 font-semibold text-[11px] uppercase tracking-wider">
+                Full Legal Name:
+              </label>
+              <input
+                id="modal-signer-name"
+                type="text"
+                value={signerName}
+                onChange={(e) => {
+                  setSignerName(e.target.value);
+                  if (e.target.value.trim()) setValidationError(null);
+                }}
+                placeholder="Enter your full legal name"
+                className="text-xs px-2.5 py-1.5 bg-white border border-neutral-300 font-bold text-black focus:border-black focus:outline-none w-full sm:w-64"
+              />
             </div>
             <div className="flex justify-between">
               <span className="text-neutral-500 font-medium">Signed Location:</span>

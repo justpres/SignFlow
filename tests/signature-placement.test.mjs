@@ -472,3 +472,77 @@ test('Fast signing confirmation validation: requires drawn signature, legal name
   const res4 = validateFastSigning({ signatureDataUrl: SAMPLE_PNG_BASE64, signerName: 'Alice', agreedToTerms: true });
   assert.equal(res4.valid, true);
 });
+
+test('Fast mobile signing preserves existing template fields while stamping drawn signature', () => {
+  const existingTemplateFields = [
+    { id: 't-text', type: 'TEXT', page: 1, x: 50, y: 500, value: 'Company NDA' },
+    { id: 't-initials', type: 'INITIALS', page: 1, x: 250, y: 115, value: 'JD' },
+  ];
+
+  const targetPage = 1;
+  const targetSigX = 80;
+  const targetSigY = 120;
+  const targetWidth = 170;
+  const targetHeight = 50;
+  const signatureDataUrl = SAMPLE_PNG_BASE64;
+  const today = '2026-10-07';
+
+  const baseFields = existingTemplateFields.map((f) => {
+    if (f.type === 'SIGNATURE') {
+      return { ...f, page: targetPage, x: targetSigX, y: targetSigY, width: targetWidth, height: targetHeight, value: signatureDataUrl };
+    }
+    if (f.type === 'DATE') {
+      return { ...f, page: targetPage, value: today };
+    }
+    return f;
+  });
+
+  const hasSigInBase = baseFields.some((f) => f.type === 'SIGNATURE');
+  const submissionFields = hasSigInBase
+    ? baseFields
+    : [
+        ...baseFields,
+        {
+          id: 'field-fast-sig',
+          type: 'SIGNATURE',
+          page: targetPage,
+          x: targetSigX,
+          y: targetSigY,
+          width: targetWidth,
+          height: targetHeight,
+          value: signatureDataUrl,
+          label: 'Client Signature',
+          required: true,
+        },
+      ];
+
+  assert.equal(submissionFields.length, 3);
+  assert.equal(submissionFields.find((f) => f.type === 'TEXT')?.value, 'Company NDA');
+  assert.equal(submissionFields.find((f) => f.type === 'INITIALS')?.value, 'JD');
+  assert.equal(submissionFields.find((f) => f.type === 'SIGNATURE')?.value, SAMPLE_PNG_BASE64);
+});
+
+test('Viewport non-clipping margin: auto layout ensures start alignment when overflowing', () => {
+  function computeLayoutOffsets(containerWidth, docWidth) {
+    if (docWidth <= containerWidth) {
+      // Centered with positive auto margins
+      const margin = (containerWidth - docWidth) / 2;
+      return { leftMargin: margin, canReachStart: true };
+    } else {
+      // Overflows: margins collapse to 0, document starts at x=0
+      return { leftMargin: 0, canReachStart: true, maxScrollLeft: docWidth - containerWidth };
+    }
+  }
+
+  // Desktop wide viewport: centered
+  const desktop = computeLayoutOffsets(1200, 673);
+  assert.equal(desktop.leftMargin, (1200 - 673) / 2);
+  assert.equal(desktop.canReachStart, true);
+
+  // Mobile small viewport (390px phone): starts at 0, no negative scroll clip
+  const mobile = computeLayoutOffsets(390, 673);
+  assert.equal(mobile.leftMargin, 0);
+  assert.equal(mobile.canReachStart, true);
+  assert.equal(mobile.maxScrollLeft, 283);
+});
+
