@@ -1,6 +1,17 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  HandIcon,
+  PenIcon,
+  UndoIcon,
+  TrashIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CheckIcon,
+} from '@/components/ui/Icons';
 
 export interface InteractiveFastSignerProps {
   pdfBase64: string;
@@ -29,8 +40,6 @@ export function InteractiveFastSigner({
   pdfBase64,
   contractTitle,
   designatedPage,
-  designatedX,
-  designatedY,
   signatureDataUrl,
   onSignatureChange,
   onProceedToSign,
@@ -244,9 +253,9 @@ export function InteractiveFastSigner({
         if (typeof window !== 'undefined') {
           const winWidth = window.innerWidth;
           if (winWidth < 640) {
-            // Mobile: fit screen width with margin
-            const targetScale = Math.max(0.65, Math.min(1.0, (winWidth - 24) / 612));
-            setScale(targetScale);
+            // Mobile: fit screen width with margin (supporting 360px+ screens)
+            const targetScale = Math.max(0.5, Math.min(1.0, (winWidth - 20) / 612));
+            setScale(Number(targetScale.toFixed(2)));
           } else {
             setScale(1.15);
           }
@@ -492,7 +501,7 @@ export function InteractiveFastSigner({
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const currentDist = Math.hypot(dx, dy);
     const ratio = currentDist / touchStartDistRef.current;
-    const nextScale = Math.max(0.6, Math.min(2.5, touchStartScaleRef.current * ratio));
+    const nextScale = Math.max(0.4, Math.min(2.5, touchStartScaleRef.current * ratio));
     setScale(Number(nextScale.toFixed(2)));
   };
 
@@ -508,38 +517,47 @@ export function InteractiveFastSigner({
     if (currentPage < numPages) setCurrentPage((p) => p + 1);
   };
   const handleZoomIn = () => setScale((s) => Math.min(Number((s + 0.2).toFixed(2)), 2.5));
-  const handleZoomOut = () => setScale((s) => Math.max(Number((s - 0.2).toFixed(2)), 0.6));
-  const handleResetZoom = () => setScale(1.0);
+  const handleZoomOut = () => setScale((s) => Math.max(Number((s - 0.2).toFixed(2)), 0.4));
+  const handleResetZoom = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      const targetScale = Math.max(0.5, Math.min(1.0, (window.innerWidth - 20) / 612));
+      setScale(Number(targetScale.toFixed(2)));
+    } else {
+      setScale(1.0);
+    }
+  };
 
-  // Check if active page has designated signature target
-  const isDesignatedPage = designatedPage ? designatedPage === currentPage : currentPage === numPages;
-  const targetX = designatedX !== undefined ? designatedX : 70;
-  const targetY = designatedY !== undefined ? designatedY : 115;
   const hasSignatureRecorded = Boolean(signatureDataUrl || currentStrokes.length > 0);
 
   return (
     <div className="flex flex-col h-full w-full bg-neutral-100 select-none overflow-hidden relative font-sans">
       {/* Top Status Notification Banner */}
       <div className="flex-shrink-0 bg-white border-b border-neutral-300 px-3 py-2 flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-2 truncate">
-          <span className="font-bold text-black uppercase tracking-wider text-[11px]">
+        <div className="flex items-center space-x-2 truncate min-w-0">
+          <span className="font-bold text-black uppercase tracking-wider text-[11px] truncate max-w-[140px] sm:max-w-none">
             {contractTitle || 'Contract Document'}
           </span>
           <span className="text-neutral-400">|</span>
-          <span className="text-neutral-600 font-mono text-[11px]">
+          <span className="text-neutral-600 font-mono text-[11px] shrink-0">
             Page {currentPage} of {numPages}
           </span>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1.5 shrink-0">
+          {hasSignatureRecorded && (
+            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-mono font-bold tracking-wider uppercase">
+              <CheckIcon className="w-3 h-3 text-black" />
+              <span className="hidden xs:inline">SIGNED</span>
+            </span>
+          )}
           {mode === 'PEN' ? (
-            <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 bg-black text-white text-[10px] font-bold tracking-wide uppercase">
+            <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 bg-black text-white text-[10px] font-bold tracking-wider uppercase">
               <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-              <span>✍ Pen Mode Active (Document Frozen)</span>
+              <span>PEN MODE</span>
             </span>
           ) : (
-            <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 bg-neutral-200 text-neutral-800 text-[10px] font-semibold tracking-wide uppercase">
-              <span>✋ Pan &amp; Zoom Mode</span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-neutral-200 text-neutral-800 text-[10px] font-semibold tracking-wider uppercase">
+              <span>PAN &amp; ZOOM</span>
             </span>
           )}
         </div>
@@ -548,7 +566,7 @@ export function InteractiveFastSigner({
       {/* Main Interactive Document Viewport */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 relative overflow-auto p-4 transition-colors pb-40 sm:pb-28 ${
+        className={`flex-1 relative overflow-auto p-4 transition-colors pb-36 sm:pb-24 ${
           mode === 'PEN' ? 'touch-none overflow-hidden cursor-crosshair bg-neutral-200/90' : 'cursor-grab active:cursor-grabbing bg-neutral-100'
         }`}
         onMouseDown={handleMouseDownNavigate}
@@ -580,23 +598,6 @@ export function InteractiveFastSigner({
               {/* Underlying PDF Page Canvas */}
               <canvas ref={pdfCanvasRef} className="block pointer-events-none" />
 
-              {/* Designated Signature Target Guideline Anchor (if designated on this page) */}
-              {isDesignatedPage && (
-                <div
-                  className="absolute border-2 border-dashed border-black/60 bg-black/[0.03] pointer-events-none flex flex-col justify-end p-1.5 transition-opacity"
-                  style={{
-                    left: `${targetX * scale}px`,
-                    top: `${(pageDimensions.height - targetY - 50) * scale}px`,
-                    width: `${170 * scale}px`,
-                    height: `${50 * scale}px`,
-                  }}
-                >
-                  <div className="text-[9px] font-mono font-bold uppercase tracking-wider text-black/70 flex items-center justify-between">
-                    <span>✍ Designated Signature Line</span>
-                  </div>
-                </div>
-              )}
-
               {/* Inking Drawing Canvas Overlay */}
               <canvas
                 ref={inkCanvasRef}
@@ -614,157 +615,156 @@ export function InteractiveFastSigner({
       </div>
 
       {/* Floating High-Contrast Mobile Dock */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-2 border-black shadow-2xl p-2.5 sm:p-3">
-        <div className="max-w-4xl mx-auto flex flex-col space-y-2">
-          {/* Status Line / Quick Instruction */}
-          <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-700 px-1">
-            <span className="truncate">
-              {mode === 'PEN' ? (
-                <span className="text-black font-bold">
-                  ✍ DRAW YOUR SIGNATURE ON THE DOCUMENT • Touch &amp; drag anywhere on the page
-                </span>
-              ) : (
-                <span>
-                  ✋ Drag to pan anywhere • Zoom in to signature area • Switch to ✍ Pen to draw
-                </span>
-              )}
-            </span>
-            {hasSignatureRecorded && (
-              <span className="text-black font-mono font-bold text-[10px] shrink-0 ml-2">
-                ✓ SIGNATURE RECORDED
-              </span>
-            )}
-          </div>
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-2 border-black shadow-2xl p-2 sm:p-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          {/* Controls Bar: Ultra-Compact Icon-Only Toolbar */}
+          <div className="flex items-center justify-between sm:justify-start gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-0.5">
+            {/* Mode Toggle: Hand (Pan & Zoom) vs Pen (Ink Sign) */}
+            <div className="flex items-center space-x-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setMode('NAVIGATE')}
+                className={`w-8 h-8 sm:w-9 sm:h-9 text-xs font-bold transition-colors border-2 cursor-pointer flex items-center justify-center ${
+                  mode === 'NAVIGATE'
+                    ? 'bg-black text-white border-black shadow-sm'
+                    : 'bg-white text-black border-neutral-300 hover:border-black'
+                }`}
+                aria-label="Pan and zoom mode"
+                aria-pressed={mode === 'NAVIGATE'}
+                title="Pan & Zoom Mode"
+              >
+                <HandIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
 
-          {/* Controls Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-            <div className="flex items-center justify-between gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
-              {/* The 2 Core Mode Buttons */}
-              <div className="flex items-center space-x-1.5 shrink-0 flex-1 sm:flex-initial">
-                <button
-                  type="button"
-                  onClick={() => setMode('NAVIGATE')}
-                  className={`flex-1 sm:flex-initial px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors border-2 cursor-pointer flex items-center justify-center space-x-1.5 ${
-                    mode === 'NAVIGATE'
-                      ? 'bg-black text-white border-black shadow-sm'
-                      : 'bg-white text-black border-neutral-300 hover:border-black'
-                  }`}
-                  aria-pressed={mode === 'NAVIGATE'}
-                >
-                  <span>✋ Pan &amp; Zoom</span>
-                </button>
+              <button
+                type="button"
+                onClick={() => setMode('PEN')}
+                className={`w-8 h-8 sm:w-9 sm:h-9 text-xs font-bold transition-colors border-2 cursor-pointer flex items-center justify-center ${
+                  mode === 'PEN'
+                    ? 'bg-black text-white border-black shadow-sm'
+                    : 'bg-white text-black border-neutral-300 hover:border-black'
+                }`}
+                aria-label="Pen drawing mode"
+                aria-pressed={mode === 'PEN'}
+                title="Pen / Sign Mode"
+              >
+                <PenIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
 
-                <button
-                  type="button"
-                  onClick={() => setMode('PEN')}
-                  className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold uppercase tracking-wider transition-colors border-2 cursor-pointer flex items-center justify-center space-x-1.5 ${
-                    mode === 'PEN'
-                      ? 'bg-black text-white border-black shadow-sm'
-                      : 'bg-white text-black border-neutral-300 hover:border-black'
-                  }`}
-                  aria-pressed={mode === 'PEN'}
-                >
-                  <span>✍ Pen / Sign</span>
-                </button>
-              </div>
+            <span className="text-neutral-300 mx-0.5 shrink-0" aria-hidden="true">|</span>
 
-              {/* Contextual Action Buttons depending on Mode */}
-              {mode === 'PEN' ? (
-                <div className="flex items-center space-x-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleUndo}
-                    disabled={currentStrokes.length === 0}
-                    className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider border border-neutral-400 bg-white cursor-pointer transition-colors ${
-                      currentStrokes.length === 0
-                        ? 'opacity-40 cursor-not-allowed text-neutral-400 border-neutral-200'
-                        : 'hover:bg-neutral-100 hover:border-black text-black'
-                    }`}
-                    title="Undo last pen stroke"
-                  >
-                    <span>↶ Undo</span>
-                  </button>
+            {/* Stroke Actions: Undo & Clear */}
+            <div className="flex items-center space-x-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={currentStrokes.length === 0}
+                className={`w-8 h-8 sm:w-9 sm:h-9 border-2 transition-colors cursor-pointer flex items-center justify-center ${
+                  currentStrokes.length === 0
+                    ? 'opacity-30 cursor-not-allowed text-neutral-400 border-neutral-200 bg-white'
+                    : 'bg-white text-black border-neutral-300 hover:border-black hover:bg-neutral-100'
+                }`}
+                aria-label="Undo stroke"
+                title="Undo last stroke"
+              >
+                <UndoIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
 
-                  <button
-                    type="button"
-                    onClick={handleClear}
-                    disabled={currentStrokes.length === 0}
-                    className={`px-3 py-2 text-xs font-semibold uppercase tracking-wider border border-neutral-400 bg-white cursor-pointer transition-colors ${
-                      currentStrokes.length === 0
-                        ? 'opacity-40 cursor-not-allowed text-neutral-400 border-neutral-200'
-                        : 'hover:bg-neutral-100 hover:border-black text-black'
-                    }`}
-                    title="Clear signature on this page"
-                  >
-                    <span>🗑 Clear</span>
-                  </button>
-                </div>
-              ) : (
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={currentStrokes.length === 0}
+                className={`w-8 h-8 sm:w-9 sm:h-9 border-2 transition-colors cursor-pointer flex items-center justify-center ${
+                  currentStrokes.length === 0
+                    ? 'opacity-30 cursor-not-allowed text-neutral-400 border-neutral-200 bg-white'
+                    : 'bg-white text-black border-neutral-300 hover:border-black hover:bg-neutral-100'
+                }`}
+                aria-label="Clear page signature"
+                title="Clear signature on this page"
+              >
+                <TrashIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
+
+            <span className="text-neutral-300 mx-0.5 shrink-0" aria-hidden="true">|</span>
+
+            {/* Zoom Controls */}
+            <div className="flex items-center space-x-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="w-8 h-8 sm:w-9 sm:h-9 border-2 border-neutral-300 bg-white text-black hover:border-black transition-colors cursor-pointer flex items-center justify-center"
+                aria-label="Zoom out"
+                title="Zoom out"
+              >
+                <ZoomOutIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                className="h-8 sm:h-9 px-1.5 sm:px-2 text-[10px] sm:text-[11px] font-mono font-bold border-2 border-neutral-300 bg-white text-black hover:border-black transition-colors cursor-pointer flex items-center justify-center min-w-[2.75rem] text-center"
+                aria-label="Reset zoom"
+                title="Reset zoom"
+              >
+                {Math.round(scale * 100)}%
+              </button>
+
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="w-8 h-8 sm:w-9 sm:h-9 border-2 border-neutral-300 bg-white text-black hover:border-black transition-colors cursor-pointer flex items-center justify-center"
+                aria-label="Zoom in"
+                title="Zoom in"
+              >
+                <ZoomInIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
+
+            {/* Page Navigation (if multi-page document) */}
+            {numPages > 1 && (
+              <>
+                <span className="text-neutral-300 mx-0.5 shrink-0" aria-hidden="true">|</span>
                 <div className="flex items-center space-x-1 shrink-0">
-                  {/* Page Navigation */}
                   <button
                     type="button"
                     onClick={handlePrevPage}
                     disabled={currentPage <= 1}
-                    className="px-2 py-1.5 text-xs font-mono font-bold border border-neutral-300 bg-white hover:border-black disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Previous Page"
+                    className="w-7 h-8 sm:w-8 sm:h-9 border-2 border-neutral-300 bg-white text-black hover:border-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center"
+                    aria-label="Previous page"
+                    title="Previous page"
                   >
-                    ‹
+                    <ChevronLeftIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
-                  <span className="text-[11px] font-mono px-1 font-semibold">
+                  <span className="text-[10px] sm:text-[11px] font-mono font-semibold px-0.5" aria-label={`Page ${currentPage} of ${numPages}`}>
                     {currentPage}/{numPages}
                   </span>
                   <button
                     type="button"
                     onClick={handleNextPage}
                     disabled={currentPage >= numPages}
-                    className="px-2 py-1.5 text-xs font-mono font-bold border border-neutral-300 bg-white hover:border-black disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Next Page"
+                    className="w-7 h-8 sm:w-8 sm:h-9 border-2 border-neutral-300 bg-white text-black hover:border-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center"
+                    aria-label="Next page"
+                    title="Next page"
                   >
-                    ›
-                  </button>
-
-                  <span className="text-neutral-300 mx-1">|</span>
-
-                  {/* Zoom Controls */}
-                  <button
-                    type="button"
-                    onClick={handleZoomOut}
-                    className="px-2 py-1.5 text-xs font-mono font-bold border border-neutral-300 bg-white hover:border-black"
-                    title="Zoom Out"
-                  >
-                    −
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResetZoom}
-                    className="px-2 py-1.5 text-[11px] font-mono font-semibold border border-neutral-300 bg-white hover:border-black"
-                    title="Reset Zoom"
-                  >
-                    {Math.round(scale * 100)}%
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleZoomIn}
-                    className="px-2 py-1.5 text-xs font-mono font-bold border border-neutral-300 bg-white hover:border-black"
-                    title="Zoom In"
-                  >
-                    +
+                    <ChevronRightIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
                 </div>
-              )}
-            </div>
+              </>
+            )}
+          </div>
 
-            {/* Complete & Seal Action Button */}
-            <div className="w-full sm:w-auto shrink-0 sm:ml-auto">
-              <button
-                type="button"
-                onClick={onProceedToSign}
-                className="w-full sm:w-auto px-4 py-2.5 bg-black text-white text-xs font-bold uppercase tracking-wider border-2 border-black hover:bg-neutral-800 transition-colors cursor-pointer flex items-center justify-center space-x-1.5 shadow-md"
-              >
-                <span>Complete &amp; Seal Contract →</span>
-              </button>
-            </div>
+          {/* Primary Action Button: SIGN */}
+          <div className="w-full sm:w-auto shrink-0 sm:ml-auto">
+            <button
+              type="button"
+              onClick={onProceedToSign}
+              className="w-full sm:w-auto px-6 py-2.5 sm:py-2 bg-black text-white text-xs sm:text-sm font-bold uppercase tracking-wider border-2 border-black hover:bg-neutral-800 transition-colors cursor-pointer flex items-center justify-center shadow-md active:scale-[0.99]"
+              aria-label="Sign document"
+            >
+              <span>SIGN</span>
+            </button>
           </div>
         </div>
       </div>

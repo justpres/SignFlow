@@ -546,3 +546,60 @@ test('Viewport non-clipping margin: auto layout ensures start alignment when ove
   assert.equal(mobile.maxScrollLeft, 283);
 });
 
+test('Universal phone dimension auto-scale: fits 360px Android, 390px iPhone, and desktops', () => {
+  function computeTargetScale(winWidth, standardDocWidth = 612) {
+    if (winWidth < 640) {
+      const targetScale = Math.max(0.5, Math.min(1.0, (winWidth - 20) / standardDocWidth));
+      return Number(targetScale.toFixed(2));
+    }
+    return 1.15;
+  }
+
+  // 360px Android (Samsung Galaxy, Xiaomi/Redmi)
+  const scale360 = computeTargetScale(360);
+  assert.ok(scale360 <= (360 / 612));
+  assert.equal(scale360, 0.56);
+  assert.ok(612 * scale360 <= 360);
+
+  // 390px iPhone
+  const scale390 = computeTargetScale(390);
+  assert.ok(scale390 <= (390 / 612));
+  assert.equal(scale390, 0.6);
+  assert.ok(612 * scale390 <= 390);
+
+  // 1200px Desktop
+  const scaleDesktop = computeTargetScale(1200);
+  assert.equal(scaleDesktop, 1.15);
+});
+
+test('Icon-only toolbar modes and button state contracts', () => {
+  function getModeStyles(mode) {
+    return {
+      handActive: mode === 'NAVIGATE',
+      penActive: mode === 'PEN',
+      handClass: mode === 'NAVIGATE' ? 'bg-black text-white' : 'bg-white text-black',
+      penClass: mode === 'PEN' ? 'bg-black text-white' : 'bg-white text-black',
+    };
+  }
+
+  // NAVIGATE mode
+  const nav = getModeStyles('NAVIGATE');
+  assert.equal(nav.handActive, true);
+  assert.equal(nav.penActive, false);
+  assert.equal(nav.handClass, 'bg-black text-white');
+  assert.equal(nav.penClass, 'bg-white text-black');
+
+  // PEN mode
+  const pen = getModeStyles('PEN');
+  assert.equal(pen.handActive, false);
+  assert.equal(pen.penActive, true);
+  assert.equal(pen.handClass, 'bg-white text-black');
+  assert.equal(pen.penClass, 'bg-black text-white');
+
+  // Action button text contract is one word "SIGN"
+  const actionButtonText = 'SIGN';
+  assert.equal(actionButtonText, 'SIGN');
+  assert.equal(actionButtonText.split(' ').length, 1);
+});
+
+

@@ -137,7 +137,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
   // Trigger Are You Sure modal
   const handleOpenConfirmation = () => {
     if (!signatureDataUrl) {
-      setValidationError('Please use the ✍ Pen / Sign button to draw your signature on the document first.');
+      setValidationError('Please draw your signature on the document before signing.');
       return;
     }
     setValidationError(null);
@@ -340,19 +340,19 @@ export function SigningFlow({ token }: SigningFlowProps) {
   return (
     <div className="h-screen w-screen bg-white flex flex-col text-black overflow-hidden select-none">
       {/* Top Header: Immediate Access with Legal Name & Trust Indicator */}
-      <header className="flex-shrink-0 border-b border-neutral-300 bg-white px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-4 h-4 bg-black shrink-0" aria-hidden="true" />
-          <span className="font-bold tracking-tight text-sm text-black shrink-0">SignFlow</span>
+      <header className="flex-shrink-0 border-b border-neutral-300 bg-white px-2.5 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+          <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black shrink-0" aria-hidden="true" />
+          <span className="font-bold tracking-tight text-xs sm:text-sm text-black shrink-0">SignFlow</span>
           <span className="text-neutral-300 shrink-0">|</span>
-          <span className="text-xs text-neutral-700 font-medium truncate max-w-[140px] sm:max-w-xs">
+          <span className="text-[11px] sm:text-xs text-neutral-700 font-medium truncate max-w-[90px] xs:max-w-[130px] sm:max-w-xs">
             {contract.title}
           </span>
         </div>
 
         {/* Legal Signer Name Input Bar */}
-        <div className="flex items-center space-x-2 shrink-0">
-          <label htmlFor="signer-name-header" className="text-[11px] font-bold uppercase text-neutral-600 hidden sm:inline">
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+          <label htmlFor="signer-name-header" className="text-[11px] font-bold uppercase text-neutral-600 hidden md:inline">
             Legal Signer:
           </label>
           <input
@@ -360,10 +360,11 @@ export function SigningFlow({ token }: SigningFlowProps) {
             type="text"
             value={signerName}
             onChange={(e) => setSignerName(e.target.value)}
-            placeholder="Your Full Legal Name"
-            className="text-xs px-2.5 py-1 bg-neutral-50 border border-neutral-300 text-black font-medium focus:border-black focus:outline-none w-36 sm:w-48"
+            placeholder="Legal Name"
+            aria-label="Your Full Legal Name"
+            className="text-[11px] sm:text-xs px-2 py-1 bg-neutral-50 border border-neutral-300 text-black font-medium focus:border-black focus:outline-none w-28 xs:w-36 sm:w-48 truncate"
           />
-          <div className="hidden md:flex items-center space-x-1.5 text-[11px] text-neutral-500 font-mono ml-2">
+          <div className="hidden lg:flex items-center space-x-1.5 text-[11px] text-neutral-500 font-mono ml-2">
             <LockIcon className="w-3.5 h-3.5" />
             <span>256-Bit Encrypted</span>
           </div>
