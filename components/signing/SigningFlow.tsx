@@ -408,64 +408,40 @@ export function SigningFlow({ token }: SigningFlowProps) {
         />
       </main>
 
-      {/* "Are You Sure?" Final Legal Confirmation Modal */}
+      {/* Refined Compact Confirmation Modal */}
       <Modal
         isOpen={showAreYouSureModal}
         onClose={() => {
           if (!isFinalizing) setShowAreYouSureModal(false);
         }}
-        title="Are You Sure? — Final Contract Confirmation"
+        title="Confirm Signature"
+        maxWidth="sm"
       >
-        <div className="space-y-4 text-black text-xs font-sans">
-          {/* Prominent Legal Risk Warning */}
-          <div className="p-3.5 border-2 border-black bg-neutral-50 space-y-1.5">
-            <div className="flex items-center space-x-2">
-              <WarningIcon className="w-4 h-4 text-black shrink-0" />
-              <span className="font-bold uppercase tracking-wider text-[11px] text-black">
-                Legal Risk Warning &bull; Irreversible Execution
-              </span>
-            </div>
-            <p className="text-[11px] text-neutral-700 leading-relaxed">
-              Applying your signature creates an immutable, legally binding contract under the federal <strong>ESIGN Act</strong> (15 U.S.C. § 7001) and <strong>UETA</strong>. Once sealed, this agreement cannot be altered, canceled, or undone. Please confirm you have thoroughly read all clauses and that your signature is accurately positioned.
-            </p>
-          </div>
-
-          {/* Contract & Signer Summary */}
-          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-2.5">
-            <div className="flex justify-between border-b border-neutral-200 pb-1.5">
-              <span className="text-neutral-500 font-medium">Contract Document:</span>
-              <span className="font-bold text-black">{contract.title}</span>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 border-b border-neutral-200 pb-2">
-              <label htmlFor="modal-signer-name" className="text-neutral-600 font-semibold text-[11px] uppercase tracking-wider">
-                Full Legal Name:
-              </label>
-              <input
-                id="modal-signer-name"
-                type="text"
-                value={signerName}
-                onChange={(e) => {
-                  setSignerName(e.target.value);
-                  if (e.target.value.trim()) setValidationError(null);
-                }}
-                placeholder="Enter your full legal name"
-                className="text-xs px-2.5 py-1.5 bg-white border border-neutral-300 font-bold text-black focus:border-black focus:outline-none w-full sm:w-64"
-              />
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-500 font-medium">Signed Location:</span>
-              <span className="font-mono text-black font-semibold">
-                Page {signaturePlacement?.page || contract.signaturePage || 1}
-              </span>
-            </div>
-          </div>
-
-          {/* Authentic Signature Preview */}
+        <div className="space-y-3.5 text-black text-xs font-sans">
+          {/* Signer Legal Name Input */}
           <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 block mb-1">
-              Applied Signature Preview:
+            <label htmlFor="modal-signer-name" className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 block mb-1">
+              Full Legal Name
             </label>
-            <div className="h-24 border-2 border-dashed border-neutral-400 bg-white flex items-center justify-center p-2">
+            <input
+              id="modal-signer-name"
+              type="text"
+              value={signerName}
+              onChange={(e) => {
+                setSignerName(e.target.value);
+                if (e.target.value.trim()) setValidationError(null);
+              }}
+              placeholder="Your full legal name"
+              className="w-full text-xs px-3 py-2 bg-neutral-50 border border-neutral-300 font-semibold text-black focus:border-black focus:bg-white focus:outline-none"
+            />
+          </div>
+
+          {/* Compact Signature Preview */}
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 block mb-1">
+              Your Drawn Signature
+            </label>
+            <div className="h-20 border border-dashed border-neutral-400 bg-neutral-50 flex items-center justify-center p-2">
               {signatureDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -479,8 +455,8 @@ export function SigningFlow({ token }: SigningFlowProps) {
             </div>
           </div>
 
-          {/* Mandatory Terms & Conditions Agreement Checkbox */}
-          <div className="p-3 border border-black bg-white space-y-2">
+          {/* Clean 1-Line Agreement Checkbox */}
+          <div className="p-2.5 border border-neutral-300 bg-white">
             <label className="flex items-start space-x-2.5 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -489,56 +465,43 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   setAgreedToTerms(e.target.checked);
                   if (e.target.checked) setValidationError(null);
                 }}
-                className="mt-0.5 w-4 h-4 rounded-none border-2 border-black accent-black focus:ring-black cursor-pointer"
+                className="mt-0.5 w-4 h-4 rounded-none border border-black accent-black focus:ring-black cursor-pointer"
               />
-              <span className="text-[11px] text-neutral-800 leading-normal font-medium">
-                I confirm that I have reviewed the entire agreement. I agree to the terms and conditions and affirmatively consent to conduct this transaction electronically pursuant to the{' '}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setShowDisclosureModal(true);
-                  }}
-                  className="font-bold text-black underline hover:text-neutral-600 cursor-pointer"
-                >
-                  Electronic Record &amp; Signature Disclosure
-                </button>
-                . I intend for my electronic signature above to be legally binding and authentic.
+              <span className="text-xs text-neutral-800 leading-snug font-medium">
+                I agree to the contract terms and confirm this is my legally binding signature.
               </span>
             </label>
           </div>
 
           {validationError && (
-            <div className="p-2.5 border border-black bg-neutral-100 text-[11px] font-semibold text-black" role="alert">
+            <div className="p-2 border border-black bg-neutral-100 text-[11px] font-semibold text-black" role="alert">
               {validationError}
             </div>
           )}
 
-          {/* Modal Action Buttons: Escape safety vs Seal */}
-          <div className="flex items-center justify-between pt-3 border-t border-neutral-200">
-            <Button
-              variant="outline"
-              size="md"
+          {/* Action Buttons: Always Visible */}
+          <div className="flex items-center gap-2 pt-2 border-t border-neutral-200">
+            <button
+              type="button"
               disabled={isFinalizing}
               onClick={() => setShowAreYouSureModal(false)}
-              className="text-xs font-semibold cursor-pointer"
+              className="flex-1 py-2.5 px-3 border border-neutral-300 hover:border-black text-xs font-semibold text-black text-center cursor-pointer transition-colors"
             >
-              ← No, Let Me Review Again
-            </Button>
+              Cancel
+            </button>
 
-            <Button
-              variant="primary"
-              size="md"
+            <button
+              type="button"
               disabled={!agreedToTerms || isFinalizing}
-              isLoading={isFinalizing}
-              loadingText="Sealing Document..."
               onClick={handleFinalSubmit}
-              className={`text-xs font-bold uppercase tracking-wider ${
-                !agreedToTerms ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              className={`flex-1 py-2.5 px-3 bg-black text-white text-xs font-bold uppercase tracking-wider text-center transition-colors border border-black ${
+                !agreedToTerms || isFinalizing
+                  ? 'opacity-40 cursor-not-allowed'
+                  : 'hover:bg-neutral-800 cursor-pointer shadow-sm'
               }`}
             >
-              YES, COMPLETE &amp; SEAL CONTRACT ✓
-            </Button>
+              {isFinalizing ? 'Sealing...' : 'Confirm & Sign ✓'}
+            </button>
           </div>
         </div>
       </Modal>

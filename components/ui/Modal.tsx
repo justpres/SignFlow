@@ -64,15 +64,15 @@ export function Modal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className={`w-full ${maxWidthClass} bg-white border border-neutral-300 p-6 shadow-2xl relative outline-none`}
+        className={`w-full ${maxWidthClass} max-h-[90vh] flex flex-col bg-white border border-neutral-300 p-5 sm:p-6 shadow-2xl relative outline-none`}
       >
-        <div className="flex justify-between items-start mb-4">
+        <div className="flex justify-between items-start mb-3 shrink-0">
           <div>
-            <h3 id="modal-title" className="text-lg font-bold text-black tracking-tight">
+            <h3 id="modal-title" className="text-base sm:text-lg font-bold text-black tracking-tight">
               {title}
             </h3>
             {description && (
-              <p id="modal-description" className="text-sm text-neutral-600 mt-1">
+              <p id="modal-description" className="text-xs sm:text-sm text-neutral-600 mt-0.5">
                 {description}
               </p>
             )}
@@ -80,14 +80,14 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-neutral-500 hover:text-black focus-visible:outline-2 focus-visible:outline-black cursor-pointer"
+            className="p-1 -mr-1 text-neutral-500 hover:text-black focus-visible:outline-2 focus-visible:outline-black cursor-pointer"
             aria-label="Close dialog"
           >
             <CloseIcon className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="mt-2">{children}</div>
+        <div className="mt-1 overflow-y-auto flex-1 pr-0.5">{children}</div>
       </div>
     </div>
   );
