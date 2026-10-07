@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { SignaturePlacementViewer } from '@/components/signing/SignaturePlacementViewer';
-import { ProgressBar } from '@/components/signing/ProgressBar';
+import { InteractiveFastSigner } from '@/components/signing/InteractiveFastSigner';
 import { SigningErrorState } from '@/components/signing/SigningErrorState';
 import { SigningSuccess } from '@/components/signing/SigningSuccess';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import { LockIcon, DocumentIcon } from '@/components/ui/Icons';
+import { LockIcon, WarningIcon } from '@/components/ui/Icons';
 import { PlacedField } from '@/lib/types';
 
 interface ContractData {
@@ -36,30 +34,32 @@ interface SigningFlowProps {
 }
 
 export function SigningFlow({ token }: SigningFlowProps) {
-  // Streamlined 3-step in-situ flow: 1 = Intro, 2 = Review & Sign, 3 = Confirm & Finalize
-  const [currentStep, setCurrentStep] = useState<number>(1);
-  const steps = ['Introduction', 'Review & Sign', 'Confirm & Finalize'];
-
   // Contract data state
   const [contract, setContract] = useState<ContractData | null>(null);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<'EXPIRED' | 'REVOKED' | 'ALREADY_SIGNED' | 'NOT_FOUND' | 'ERROR' | 'WAITING_COUNTER_SIGN' | null>(null);
 
-  // Form & In-situ state
+  // Signer & signature state
   const [signerName, setSignerName] = useState<string>('');
-  const [fields, setFields] = useState<PlacedField[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
-  const [initialsDataUrl, setInitialsDataUrl] = useState<string | null>(null);
-  const [signatureMethod, setSignatureMethod] = useState<'DRAW' | 'TYPE'>('DRAW');
-  const [confirmationChecked, setConfirmationChecked] = useState<boolean>(false);
+  const [signaturePlacement, setSignaturePlacement] = useState<{
+    page: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Are You Sure confirmation modal state
+  const [showAreYouSureModal, setShowAreYouSureModal] = useState<boolean>(false);
+  const [agreedToTerms, setAgreedToTerms] = useState<boolean>(false);
+  const [showDisclosureModal, setShowDisclosureModal] = useState<boolean>(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
   const [isWaitingCounterSign, setIsWaitingCounterSign] = useState<boolean>(false);
 
-  // Validation & Finalization states
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [showFinalModal, setShowFinalModal] = useState<boolean>(false);
-  const [showDisclosureModal, setShowDisclosureModal] = useState<boolean>(false);
-  const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
+  // Final Success State
   const [finalSuccessData, setFinalSuccessData] = useState<{
     contractId: string;
     contractTitle: string;
@@ -99,47 +99,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
       setContract(data.contract);
       setPdfBase64(data.pdfBase64);
-
-      const clientName = data.contract.clientName || '';
-      setSignerName(clientName);
-
-      // Synthesize default in-situ anchors if no explicit multi-fields were configured
-      const defaultFields: PlacedField[] = [
-        {
-          id: 'field-sig-primary',
-          type: 'SIGNATURE',
-          page: data.contract.signaturePage || 1,
-          x: data.contract.signatureX ?? 70,
-          y: data.contract.signatureY ?? 115,
-          width: 170,
-          height: 50,
-          label: 'Client Signature',
-          required: true,
-        },
-        {
-          id: 'field-date-primary',
-          type: 'DATE',
-          page: data.contract.signaturePage || 1,
-          x: data.contract.dateX ?? (data.contract.signatureX ?? 70),
-          y: data.contract.dateY ?? Math.max((data.contract.signatureY ?? 115) - 30, 25),
-          width: 110,
-          height: 28,
-          label: 'Date Signed',
-          required: true,
-        },
-      ];
-
-      if (data.contract.fields && data.contract.fields.length > 0) {
-        // Ensure at least one SIGNATURE field exists
-        const hasSig = data.contract.fields.some((f: PlacedField) => f.type === 'SIGNATURE');
-        if (!hasSig) {
-          setFields([...data.contract.fields, defaultFields[0]]);
-        } else {
-          setFields(data.contract.fields);
-        }
-      } else {
-        setFields(defaultFields);
-      }
+      setSignerName(data.contract.clientName || '');
     } catch {
       setFetchError('ERROR');
     } finally {
@@ -151,38 +111,53 @@ export function SigningFlow({ token }: SigningFlowProps) {
     fetchContract();
   }, [fetchContract]);
 
-  // Check if primary signature is completed
-  const hasAppliedSignature = Boolean(
-    signatureDataUrl || fields.some((f) => f.type === 'SIGNATURE' && Boolean(f.value))
+  // Handle signature change from InteractiveFastSigner
+  const handleSignatureChange = useCallback(
+    (
+      dataUrl: string | null,
+      meta?: {
+        page: number;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }
+    ) => {
+      setSignatureDataUrl(dataUrl);
+      if (meta) {
+        setSignaturePlacement(meta);
+      }
+      if (dataUrl) {
+        setValidationError(null);
+      }
+    },
+    []
   );
 
-  const handleProceedToFinalReview = () => {
+  // Trigger Are You Sure modal
+  const handleOpenConfirmation = () => {
+    if (!signatureDataUrl) {
+      setValidationError('Please use the ✍ Pen / Sign button to draw your signature on the document first.');
+      return;
+    }
     if (!signerName.trim()) {
-      setValidationError('Please enter your full legal name before proceeding.');
-      return;
-    }
-    if (!hasAppliedSignature) {
-      setValidationError('Please tap the designated signature anchor on the document to apply your signature.');
-      return;
-    }
-    // Verify all required fields (excluding DATE which auto-populates upon signature)
-    const missingRequired = fields.filter(
-      (f) => f.required !== false && f.type !== 'DATE' && !f.value
-    );
-    if (missingRequired.length > 0) {
-      const missingLabels = missingRequired
-        .map((f) => f.label || (f.type === 'SIGNATURE' ? 'Signature' : f.type === 'INITIALS' ? 'Initials' : f.type))
-        .join(', ');
-      setValidationError(`Please complete all required fields (${missingLabels}) before proceeding.`);
+      setValidationError('Please enter your full legal name before completing.');
       return;
     }
     setValidationError(null);
-    setCurrentStep(3);
+    setAgreedToTerms(false);
+    setShowAreYouSureModal(true);
   };
 
+  // Final submit handler
   const handleFinalSubmit = async () => {
-    if (!confirmationChecked) {
-      setValidationError('You must confirm that you reviewed the contract before finalizing.');
+    if (!agreedToTerms) {
+      setValidationError('You must agree to the contract terms and legal signature disclosure before sealing.');
+      return;
+    }
+    if (!signatureDataUrl) {
+      setValidationError('Signature is missing. Please draw your signature before finalizing.');
+      setShowAreYouSureModal(false);
       return;
     }
 
@@ -191,31 +166,11 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
     try {
       const today = new Date().toISOString().split('T')[0];
-      const activeSigUrl =
-        signatureDataUrl ||
-        fields.find((f) => f.type === 'SIGNATURE' && f.value)?.value ||
-        null;
-
-      const signedSigField =
-        fields.find((f) => f.type === 'SIGNATURE' && f.value) ||
-        fields.find((f) => f.type === 'SIGNATURE');
-      const primaryDate = fields.find((f) => f.type === 'DATE');
-
-      // Resolve final fields ensuring DATE is populated
-      const resolvedFields = fields.map((f) => {
-        if (f.type === 'DATE' && !f.value) {
-          return { ...f, value: today };
-        }
-        if (f.type === 'SIGNATURE' && !f.value && activeSigUrl) {
-          return { ...f, value: activeSigUrl };
-        }
-        return f;
-      });
-
-      const activeInitialsUrl =
-        initialsDataUrl ||
-        fields.find((f) => f.type === 'INITIALS' && f.value)?.value ||
-        undefined;
+      const targetPage = signaturePlacement?.page || contract?.signaturePage || 1;
+      const targetSigX = signaturePlacement?.x ?? contract?.signatureX ?? 70;
+      const targetSigY = signaturePlacement?.y ?? contract?.signatureY ?? 115;
+      const targetWidth = signaturePlacement?.width ?? 170;
+      const targetHeight = signaturePlacement?.height ?? 50;
 
       const res = await fetch('/api/contracts/finalize', {
         method: 'POST',
@@ -223,26 +178,50 @@ export function SigningFlow({ token }: SigningFlowProps) {
         body: JSON.stringify({
           token,
           clientName: signerName.trim(),
-          signatureDataUrl: activeSigUrl,
-          signatureMethod,
-          page: signedSigField?.page || contract?.signaturePage || 1,
-          signatureX: signedSigField?.x ?? contract?.signatureX ?? 70,
-          signatureY: signedSigField?.y ?? contract?.signatureY ?? 115,
-          nameX: signedSigField?.x ?? contract?.nameX ?? 70,
-          nameY: Math.max((signedSigField?.y ?? contract?.signatureY ?? 115) - 18, 20),
-          dateX: primaryDate?.x ?? contract?.dateX ?? 70,
-          dateY: primaryDate?.y ?? contract?.dateY ?? 85,
+          signatureDataUrl,
+          signatureMethod: 'DRAW',
+          page: targetPage,
+          signatureX: targetSigX,
+          signatureY: targetSigY,
+          nameX: targetSigX,
+          nameY: Math.max(targetSigY - 18, 20),
+          dateX: contract?.dateX ?? targetSigX,
+          dateY: contract?.dateY ?? Math.max(targetSigY - 35, 20),
           placement: {
-            page: signedSigField?.page || contract?.signaturePage || 1,
-            signatureX: signedSigField?.x ?? contract?.signatureX ?? 70,
-            signatureY: signedSigField?.y ?? contract?.signatureY ?? 115,
-            nameX: signedSigField?.x ?? contract?.nameX ?? 70,
-            nameY: Math.max((signedSigField?.y ?? contract?.signatureY ?? 115) - 18, 20),
-            dateX: primaryDate?.x ?? contract?.dateX ?? 70,
-            dateY: primaryDate?.y ?? contract?.dateY ?? 85,
+            page: targetPage,
+            signatureX: targetSigX,
+            signatureY: targetSigY,
+            nameX: targetSigX,
+            nameY: Math.max(targetSigY - 18, 20),
+            dateX: contract?.dateX ?? targetSigX,
+            dateY: contract?.dateY ?? Math.max(targetSigY - 35, 20),
           },
-          fields: resolvedFields,
-          initialsDataUrl: activeInitialsUrl,
+          fields: [
+            {
+              id: 'field-fast-sig',
+              type: 'SIGNATURE',
+              page: targetPage,
+              x: targetSigX,
+              y: targetSigY,
+              width: targetWidth,
+              height: targetHeight,
+              value: signatureDataUrl,
+              label: 'Client Signature',
+              required: true,
+            },
+            {
+              id: 'field-fast-date',
+              type: 'DATE',
+              page: targetPage,
+              x: contract?.dateX ?? targetSigX,
+              y: contract?.dateY ?? Math.max(targetSigY - 35, 20),
+              width: 110,
+              height: 28,
+              value: today,
+              label: 'Date Signed',
+              required: true,
+            },
+          ],
         }),
       });
 
@@ -254,7 +233,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
         } else {
           setValidationError(data.error || 'Failed to finalize contract. Please try again.');
         }
-        setShowFinalModal(false);
+        setShowAreYouSureModal(false);
         setIsFinalizing(false);
         return;
       }
@@ -270,10 +249,10 @@ export function SigningFlow({ token }: SigningFlowProps) {
         signedAt: data.signedAt,
         downloadUrl: data.downloadUrl,
       });
-      setShowFinalModal(false);
+      setShowAreYouSureModal(false);
     } catch {
       setValidationError('A network error occurred while submitting your signature.');
-      setShowFinalModal(false);
+      setShowAreYouSureModal(false);
     } finally {
       setIsFinalizing(false);
     }
@@ -298,7 +277,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4">
         <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-xs font-semibold text-neutral-600">Loading secure signing session...</p>
+        <p className="text-xs font-semibold text-neutral-600">Opening contract document...</p>
       </div>
     );
   }
@@ -313,387 +292,190 @@ export function SigningFlow({ token }: SigningFlowProps) {
     );
   }
 
-  if (!contract) return null;
-
-  const totalRequired = fields.filter((f) => f.required !== false).length;
-  const completedRequired = fields.filter((f) => f.required !== false && Boolean(f.value)).length;
-  const primarySigField = fields.find((f) => f.type === 'SIGNATURE');
-  const activeSigPreview = signatureDataUrl || primarySigField?.value || null;
+  if (!contract || !pdfBase64) return null;
 
   return (
-    <div className="min-h-screen bg-white flex flex-col text-black">
-      {/* Top Header with Trust Indicator */}
-      <header className="border-b border-neutral-200 bg-white py-3 px-4 sm:px-8 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-4 h-4 bg-black" aria-hidden="true" />
-          <span className="font-bold tracking-tight text-sm text-black">SignFlow</span>
-          <span className="text-neutral-300">|</span>
-          <span className="text-xs text-neutral-600 font-medium truncate max-w-xs sm:max-w-md">
+    <div className="h-screen w-screen bg-white flex flex-col text-black overflow-hidden select-none">
+      {/* Top Header: Immediate Access with Legal Name & Trust Indicator */}
+      <header className="flex-shrink-0 border-b border-neutral-300 bg-white px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-4 h-4 bg-black shrink-0" aria-hidden="true" />
+          <span className="font-bold tracking-tight text-sm text-black shrink-0">SignFlow</span>
+          <span className="text-neutral-300 shrink-0">|</span>
+          <span className="text-xs text-neutral-700 font-medium truncate max-w-[140px] sm:max-w-xs">
             {contract.title}
           </span>
         </div>
 
-        <div className="flex items-center space-x-2 text-xs text-neutral-600">
-          <LockIcon className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Secure in-situ signing session</span>
+        {/* Legal Signer Name Input Bar */}
+        <div className="flex items-center space-x-2 shrink-0">
+          <label htmlFor="signer-name-header" className="text-[11px] font-bold uppercase text-neutral-600 hidden sm:inline">
+            Legal Signer:
+          </label>
+          <input
+            id="signer-name-header"
+            type="text"
+            value={signerName}
+            onChange={(e) => setSignerName(e.target.value)}
+            placeholder="Your Full Legal Name"
+            className="text-xs px-2.5 py-1 bg-neutral-50 border border-neutral-300 text-black font-medium focus:border-black focus:outline-none w-36 sm:w-48"
+          />
+          <div className="hidden md:flex items-center space-x-1.5 text-[11px] text-neutral-500 font-mono ml-2">
+            <LockIcon className="w-3.5 h-3.5" />
+            <span>256-Bit Encrypted</span>
+          </div>
         </div>
       </header>
 
-      {/* Progress Indicator */}
-      <div className="max-w-4xl mx-auto w-full px-4 pt-6">
-        <ProgressBar currentStep={currentStep} steps={steps} />
-      </div>
-
-      {/* Main Signing Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
-        {/* Step 1: Introduction Screen */}
-        {currentStep === 1 && (
-          <div className="max-w-xl mx-auto my-auto w-full border border-neutral-300 p-8 text-center bg-white space-y-6">
-            <div className="w-12 h-12 bg-neutral-100 border border-neutral-300 mx-auto flex items-center justify-center">
-              <DocumentIcon className="w-6 h-6 text-black" />
-            </div>
-
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-black">{contract.title}</h1>
-              <p className="text-xs text-neutral-500 mt-1">
-                Please review the entire agreement carefully before providing your signature.
-              </p>
-            </div>
-
-            {contract.message && (
-              <div className="p-3 bg-neutral-50 border border-neutral-200 text-xs text-neutral-700 italic text-left">
-                &ldquo;{contract.message}&rdquo;
-              </div>
-            )}
-
-            <div className="p-4 bg-neutral-50 border border-neutral-200 text-xs text-left space-y-2">
-              <div className="font-semibold text-black uppercase tracking-wider text-[11px]">
-                Estimated Signing Steps:
-              </div>
-              <ol className="list-decimal list-inside space-y-1 text-neutral-700">
-                <li>Review the complete contract document.</li>
-                <li>Tap directly on the designated signature target to ink your signature in-place.</li>
-                <li>Verify your details and finalize the legally binding agreement.</li>
-              </ol>
-            </div>
-
-            {/* ESIGN & UETA Consumer Electronic Record Disclosure Notice */}
-            <div className="p-3 border border-neutral-200 bg-neutral-50/50 text-left text-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-black text-[11px] uppercase tracking-wider">
-                  Electronic Record & Signature Disclosure
-                </span>
-                <span className="text-[10px] text-neutral-500 font-mono">ESIGN &bull; UETA Compliant</span>
-              </div>
-              <p className="text-[11px] text-neutral-600 leading-normal">
-                By signing, you agree to conduct business electronically. Your electronic signature carries the full legal weight and validity of a handwritten ink signature.
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowDisclosureModal(true)}
-                className="text-[11px] font-semibold text-black underline hover:text-neutral-700 cursor-pointer inline-block pt-0.5"
-              >
-                View Full Electronic Record & Signature Disclosure →
-              </button>
-            </div>
-
-            <Button
-              variant="primary"
-              size="lg"
-              className="w-full"
-              onClick={() => setCurrentStep(2)}
-            >
-              START REVIEWING & SIGNING →
-            </Button>
+      {/* Validation Banner if user tried to complete without signing */}
+      {validationError && !showAreYouSureModal && (
+        <div className="flex-shrink-0 bg-neutral-900 text-white text-xs px-4 py-2 flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center space-x-2">
+            <WarningIcon className="w-4 h-4 text-white shrink-0" />
+            <span>{validationError}</span>
           </div>
-        )}
+          <button
+            type="button"
+            onClick={() => setValidationError(null)}
+            className="text-white hover:underline text-[11px] font-mono shrink-0 ml-3"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
-        {/* Step 2: In-Situ Document Signing (Approach B: Direct Tap-to-Ink) */}
-        {currentStep === 2 && (
-          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:h-[calc(100vh-12rem)] lg:min-h-[460px] lg:max-h-[calc(100vh-12rem)]">
-            {/* Main Interactive In-Situ PDF Canvas */}
-            <div className="lg:col-span-8 flex flex-col h-[65vh] lg:h-full min-h-0 overflow-hidden">
-              {pdfBase64 ? (
-                <SignaturePlacementViewer
-                  pdfBase64={pdfBase64}
-                  fields={fields}
-                  onFieldsChange={setFields}
-                  signerName={signerName}
-                  onSignerNameChange={setSignerName}
-                  signatureDataUrl={signatureDataUrl}
-                  onSignatureChange={setSignatureDataUrl}
-                  initialsDataUrl={initialsDataUrl}
-                  onInitialsChange={setInitialsDataUrl}
-                  signatureMethod={signatureMethod}
-                  onSignatureMethodChange={setSignatureMethod}
-                  defaultPlacementPage={contract.signaturePage}
-                />
-              ) : (
-                <div className="flex-1 border border-neutral-300 flex items-center justify-center text-xs text-neutral-500 bg-neutral-50">
-                  Document preview unavailable.
-                </div>
-              )}
-            </div>
-
-            {/* Sidebar Guide & Action Panel */}
-            <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-5">
-              <div className="border-b border-neutral-200 pb-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-bold text-black">Step 2 of 3: Review & Sign</h2>
-                  <span className="text-[10px] font-mono bg-black text-white px-1.5 py-0.5 uppercase">
-                    Tap-to-Ink
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Tap directly on the highlighted boxes on the document to apply your signature.
-                </p>
-              </div>
-
-              {/* Legal Signer Name Field */}
-              <div>
-                <Input
-                  label="Signer Legal Full Name"
-                  required
-                  value={signerName}
-                  onChange={(e) => setSignerName(e.target.value)}
-                  placeholder="e.g. Juan Dela Cruz"
-                  helperText="Your legal name as recorded on the executed agreement."
-                />
-              </div>
-
-              {/* In-Situ Progress Checklist */}
-              <div className="p-3 bg-white border border-neutral-300 text-xs space-y-2">
-                <div className="font-semibold text-black uppercase tracking-wider text-[11px] flex items-center justify-between">
-                  <span>Document Signing Checklist</span>
-                  <span className="text-[10px] font-mono bg-neutral-100 border border-neutral-300 px-1.5 py-0.5">
-                    {completedRequired} / {totalRequired || fields.length} Done
-                  </span>
-                </div>
-
-                <div className="space-y-1.5 pt-1">
-                  {fields.map((f) => {
-                    const isDone = Boolean(f.value);
-                    return (
-                      <div
-                        key={f.id}
-                        className="flex items-center justify-between text-xs py-1 border-b border-neutral-100 last:border-0"
-                      >
-                        <span className="text-neutral-700 font-medium">
-                          {f.label || f.type} (P.{f.page})
-                        </span>
-                        <span
-                          className={`font-mono text-[10px] font-bold px-1.5 py-0.5 ${
-                            isDone
-                              ? 'bg-black text-white'
-                              : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
-                          }`}
-                        >
-                          {isDone ? '✓ SIGNED' : '✍ PENDING'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {validationError && (
-                <div className="p-3 border border-black bg-neutral-50 text-xs font-medium text-black" role="alert">
-                  <span className="font-bold underline mr-1">Please note:</span>
-                  {validationError}
-                </div>
-              )}
-
-              {/* Proceed Action Button */}
-              <div className="pt-2 border-t border-neutral-200 space-y-3">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleProceedToFinalReview}
-                >
-                  CONTINUE TO CONFIRM & EXECUTE →
-                </Button>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(1)}
-                  className="w-full text-xs text-neutral-600 hover:text-black underline text-center cursor-pointer"
-                >
-                  ← Back to Overview
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Final Review & Confirmation */}
-        {currentStep === 3 && (
-          <div className="max-w-2xl mx-auto w-full border border-neutral-300 p-6 sm:p-8 bg-white space-y-6">
-            <div className="border-b border-neutral-200 pb-4">
-              <h2 className="text-lg font-bold text-black">Step 3 of 3: Final Review & Confirm</h2>
-              <p className="text-xs text-neutral-500 mt-1">
-                Please double check your details and confirm your electronic agreement to finalize execution.
-              </p>
-            </div>
-
-            <div className="p-4 bg-neutral-50 border border-neutral-200 text-xs space-y-3">
-              <div>
-                <span className="text-neutral-500 font-medium block">Contract:</span>
-                <span className="font-bold text-black text-sm">{contract.title}</span>
-              </div>
-              <div>
-                <span className="text-neutral-500 font-medium block">Signer Legal Name:</span>
-                <span className="font-semibold text-black">{signerName}</span>
-              </div>
-              <div>
-                <span className="text-neutral-500 font-medium block">Signature Method:</span>
-                <span className="text-neutral-800">
-                  {signatureMethod === 'DRAW' ? 'Handwritten Touch / Ink Canvas' : 'Typed Calligraphic Representation'}
-                </span>
-              </div>
-              <div>
-                <span className="text-neutral-500 font-medium block">Fields Executed:</span>
-                <span className="font-mono text-neutral-800">
-                  {fields.length} document fields bound in-situ directly on the document.
-                </span>
-              </div>
-              <div>
-                <span className="text-neutral-500 font-medium block mb-1">Applied Signature Preview:</span>
-                <div className="h-24 border border-neutral-300 bg-white flex items-center justify-center p-2">
-                  {activeSigPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={activeSigPreview}
-                      alt="Signature preview"
-                      className="max-h-full max-w-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-xs text-neutral-400">Signature not recorded</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tamper-Evident Seal & Legal Audit Record callout */}
-            <div className="p-4 border border-black bg-white space-y-3">
-              <div className="flex items-center space-x-2 border-b border-neutral-200 pb-2">
-                <span className="w-2.5 h-2.5 bg-black" />
-                <span className="text-xs font-bold text-black uppercase tracking-wider">
-                  Tamper-Evident Security Seal & Embedded Audit Record
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-neutral-700">
-                <div className="flex items-start space-x-2">
-                  <span className="font-bold text-black font-mono">01.</span>
-                  <div>
-                    <span className="font-semibold text-black block">Cryptographic SHA-256 Digest</span>
-                    <span className="text-[11px] text-neutral-500">Document integrity is cryptographically sealed upon submission.</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-2">
-                  <span className="font-bold text-black font-mono">02.</span>
-                  <div>
-                    <span className="font-semibold text-black block">Embedded Verification Record</span>
-                    <span className="text-[11px] text-neutral-500">Signer telemetry, UTC timestamp, and compliance metadata are embedded directly inside the file.</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Confirmation & Electronic Consent Checkbox */}
-            <div className="p-4 border border-neutral-300 bg-neutral-50/50 space-y-2">
-              <label className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={confirmationChecked}
-                  onChange={(e) => {
-                    setConfirmationChecked(e.target.checked);
-                    if (e.target.checked) setValidationError(null);
-                  }}
-                  className="mt-0.5 w-4 h-4 rounded-none border-black accent-black focus:ring-black"
-                />
-                <span className="text-xs text-neutral-800 leading-relaxed font-medium">
-                  I agree to the{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowDisclosureModal(true);
-                    }}
-                    className="font-bold text-black underline hover:text-neutral-600"
-                  >
-                    Consumer Electronic Record & Signature Disclosure
-                  </button>
-                  . I confirm that I have reviewed the contract, applied my signature at the designated location, and intend for this electronic signature to be legally binding under the ESIGN Act and UETA.
-                </span>
-              </label>
-            </div>
-
-            {validationError && (
-              <div className="p-3 border border-black bg-neutral-50 text-xs font-medium text-black" role="alert">
-                <span className="font-bold underline mr-1">Note:</span>
-                {validationError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-200">
-              <Button variant="outline" onClick={() => setCurrentStep(2)}>
-                ← Back to Document
-              </Button>
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={() => {
-                  if (!confirmationChecked) {
-                    setValidationError('Please check the confirmation box before finalizing.');
-                    return;
-                  }
-                  setShowFinalModal(true);
-                }}
-              >
-                FINALIZE & SIGN CONTRACT ✓
-              </Button>
-            </div>
-          </div>
-        )}
+      {/* Main Full-Screen Interactive Fast Signer (No Step Wizards) */}
+      <main className="flex-1 w-full h-full min-h-0 relative overflow-hidden">
+        <InteractiveFastSigner
+          pdfBase64={pdfBase64}
+          contractTitle={contract.title}
+          designatedPage={contract.signaturePage}
+          designatedX={contract.signatureX}
+          designatedY={contract.signatureY}
+          signatureDataUrl={signatureDataUrl}
+          onSignatureChange={handleSignatureChange}
+          onProceedToSign={handleOpenConfirmation}
+        />
       </main>
 
-      {/* Final Irreversible Confirmation Dialog */}
+      {/* "Are You Sure?" Final Legal Confirmation Modal */}
       <Modal
-        isOpen={showFinalModal}
+        isOpen={showAreYouSureModal}
         onClose={() => {
-          if (!isFinalizing) setShowFinalModal(false);
+          if (!isFinalizing) setShowAreYouSureModal(false);
         }}
-        title="Confirm Your Signature"
+        title="Are You Sure? — Final Contract Confirmation"
       >
-        <div className="space-y-4">
-          <p className="text-sm text-neutral-700">
-            You are about to complete and sign this agreement. Your electronic signature will be placed onto the document in-place, and a verified signed copy will be generated.
-          </p>
-
-          <div className="p-3 bg-neutral-50 border border-neutral-200 text-xs space-y-1">
-            <div><span className="font-semibold">Signer:</span> {signerName}</div>
-            <div><span className="font-semibold">Contract:</span> {contract.title}</div>
-            <div><span className="font-semibold">Security Verification:</span> Cryptographic SHA-256 Digest + Embedded Audit Record</div>
+        <div className="space-y-4 text-black text-xs font-sans">
+          {/* Prominent Legal Risk Warning */}
+          <div className="p-3.5 border-2 border-black bg-neutral-50 space-y-1.5">
+            <div className="flex items-center space-x-2">
+              <WarningIcon className="w-4 h-4 text-black shrink-0" />
+              <span className="font-bold uppercase tracking-wider text-[11px] text-black">
+                Legal Risk Warning &bull; Irreversible Execution
+              </span>
+            </div>
+            <p className="text-[11px] text-neutral-700 leading-relaxed">
+              Applying your signature creates an immutable, legally binding contract under the federal <strong>ESIGN Act</strong> (15 U.S.C. § 7001) and <strong>UETA</strong>. Once sealed, this agreement cannot be altered, canceled, or undone. Please confirm you have thoroughly read all clauses and that your signature is accurately positioned.
+            </p>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-200">
+          {/* Contract & Signer Summary */}
+          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-2">
+            <div className="flex justify-between border-b border-neutral-200 pb-1">
+              <span className="text-neutral-500 font-medium">Contract Document:</span>
+              <span className="font-bold text-black">{contract.title}</span>
+            </div>
+            <div className="flex justify-between border-b border-neutral-200 pb-1">
+              <span className="text-neutral-500 font-medium">Full Legal Signer:</span>
+              <span className="font-bold text-black">{signerName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-neutral-500 font-medium">Signed Location:</span>
+              <span className="font-mono text-black font-semibold">
+                Page {signaturePlacement?.page || contract.signaturePage || 1}
+              </span>
+            </div>
+          </div>
+
+          {/* Authentic Signature Preview */}
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 block mb-1">
+              Applied Signature Preview:
+            </label>
+            <div className="h-24 border-2 border-dashed border-neutral-400 bg-white flex items-center justify-center p-2">
+              {signatureDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={signatureDataUrl}
+                  alt="Drawn Signature Preview"
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-neutral-400 text-xs">No signature recorded</span>
+              )}
+            </div>
+          </div>
+
+          {/* Mandatory Terms & Conditions Agreement Checkbox */}
+          <div className="p-3 border border-black bg-white space-y-2">
+            <label className="flex items-start space-x-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => {
+                  setAgreedToTerms(e.target.checked);
+                  if (e.target.checked) setValidationError(null);
+                }}
+                className="mt-0.5 w-4 h-4 rounded-none border-2 border-black accent-black focus:ring-black cursor-pointer"
+              />
+              <span className="text-[11px] text-neutral-800 leading-normal font-medium">
+                I confirm that I have reviewed the entire agreement. I agree to the terms and conditions and affirmatively consent to conduct this transaction electronically pursuant to the{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowDisclosureModal(true);
+                  }}
+                  className="font-bold text-black underline hover:text-neutral-600 cursor-pointer"
+                >
+                  Electronic Record &amp; Signature Disclosure
+                </button>
+                . I intend for my electronic signature above to be legally binding and authentic.
+              </span>
+            </label>
+          </div>
+
+          {validationError && (
+            <div className="p-2.5 border border-black bg-neutral-100 text-[11px] font-semibold text-black" role="alert">
+              {validationError}
+            </div>
+          )}
+
+          {/* Modal Action Buttons: Escape safety vs Seal */}
+          <div className="flex items-center justify-between pt-3 border-t border-neutral-200">
             <Button
               variant="outline"
+              size="md"
               disabled={isFinalizing}
-              onClick={() => setShowFinalModal(false)}
+              onClick={() => setShowAreYouSureModal(false)}
+              className="text-xs font-semibold cursor-pointer"
             >
-              GO BACK
+              ← No, Let Me Review Again
             </Button>
+
             <Button
               variant="primary"
-              onClick={handleFinalSubmit}
+              size="md"
+              disabled={!agreedToTerms || isFinalizing}
               isLoading={isFinalizing}
-              loadingText="Finalizing your signed document..."
+              loadingText="Sealing Document..."
+              onClick={handleFinalSubmit}
+              className={`text-xs font-bold uppercase tracking-wider ${
+                !agreedToTerms ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              }`}
             >
-              YES, SIGN DOCUMENT
+              YES, COMPLETE &amp; SEAL CONTRACT ✓
             </Button>
           </div>
         </div>
@@ -703,53 +485,39 @@ export function SigningFlow({ token }: SigningFlowProps) {
       <Modal
         isOpen={showDisclosureModal}
         onClose={() => setShowDisclosureModal(false)}
-        title="Consumer Electronic Record & Signature Disclosure"
+        title="Electronic Record & Signature Disclosure"
       >
         <div className="space-y-4 text-xs text-neutral-700 max-h-[60vh] overflow-y-auto pr-1">
           <p className="font-semibold text-black">
-            Please review this statutory Consumer Electronic Record & Signature Disclosure pursuant to the ESIGN Act and UETA.
+            Pursuant to the Electronic Signatures in Global and National Commerce Act (ESIGN) and Uniform Electronic Transactions Act (UETA).
           </p>
 
-          <div className="p-3 bg-neutral-50 border border-neutral-200 space-y-1 text-[11px] text-neutral-600">
-            <p><strong>Governing Statutes:</strong> Electronic Signatures in Global and National Commerce Act (ESIGN, 15 U.S.C. § 7001 et seq.) and Uniform Electronic Transactions Act (UETA).</p>
-            <p><strong>Legal Validity:</strong> Electronic signatures executed through SignFlow have the exact same legal force and effect as manual handwritten ink signatures.</p>
+          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-1 text-[11px] text-neutral-800">
+            <p><strong>Legal Validity:</strong> Electronic signatures executed through SignFlow have the exact same legal weight and enforceability as manual ink signatures on paper.</p>
+            <p><strong>Cryptographic Non-Repudiation:</strong> All executions receive a tamper-evident SHA-256 cryptographic digest, UTC timestamps, and audit verification.</p>
           </div>
 
           <div className="space-y-2">
-            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">1. Consent to Electronic Transactions</h4>
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">1. Consent to Electronic Execution</h4>
             <p>
-              By proceeding with this electronic signature process, you affirmatively consent to conduct this transaction electronically and to receive documents and communications in electronic form.
+              By proceeding, you consent to conduct this transaction electronically and receive documents in electronic format.
             </p>
           </div>
 
           <div className="space-y-2">
-            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">2. Right to Download & Retain Records</h4>
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">2. Record Retention</h4>
             <p>
-              Upon completing this transaction, you will immediately receive access to download and retain an immutable, cryptographically sealed copy of the signed contract and its associated Certificate of Completion.
+              Upon completing this transaction, you will immediately have access to download and retain an immutable, cryptographically sealed copy of the signed contract.
             </p>
           </div>
 
-          <div className="space-y-2">
-            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">3. Technical Requirements</h4>
-            <p>
-              To access and retain electronic records, you must have an active internet connection, a modern web browser (Google Chrome, Apple Safari, Mozilla Firefox, Microsoft Edge), and standard PDF viewing software.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">4. Cryptographic Evidence & Non-Repudiation</h4>
-            <p>
-              Each executed contract generates a court-admissible Certificate of Completion recording cryptographic SHA-256 hashes, timestamps in UTC, IP address telemetry, and user agent details to guarantee document integrity and non-repudiation.
-            </p>
-          </div>
-
-          <div className="flex justify-end pt-4 border-t border-neutral-200">
+          <div className="flex justify-end pt-3 border-t border-neutral-200">
             <Button
               variant="primary"
               size="sm"
               onClick={() => setShowDisclosureModal(false)}
             >
-              UNDERSTOOD & CLOSE
+              Understood &amp; Close
             </Button>
           </div>
         </div>

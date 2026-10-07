@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DocumentIcon, CopyIcon, CheckIcon } from '@/components/ui/Icons';
-import { AdminFieldPreparationModal } from '@/components/admin/AdminFieldPreparationModal';
-import { ContractTemplate, PlacedField } from '@/lib/types';
+import { ContractTemplate } from '@/lib/types';
 
 function NewContractForm() {
   const router = useRouter();
@@ -28,13 +27,8 @@ function NewContractForm() {
   const [message, setMessage] = useState('Please review and sign this agreement.');
   const [requiresCounterSign, setRequiresCounterSign] = useState(false);
   const [signaturePage, setSignaturePage] = useState('');
-  const [signatureX, setSignatureX] = useState('');
-  const [signatureY, setSignatureY] = useState('');
-  const [fields, setFields] = useState<PlacedField[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
-  const [isPrepModalOpen, setIsPrepModalOpen] = useState(false);
-  const [showManualCoords, setShowManualCoords] = useState(false);
 
   // Template states
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
@@ -42,7 +36,7 @@ function NewContractForm() {
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [templateSavedMsg, setTemplateSavedMsg] = useState<string | null>(null);
 
-  // Flow & submission states
+  // Submission & draft states
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftSavedMsg, setDraftSavedMsg] = useState<string | null>(null);
@@ -51,7 +45,7 @@ function NewContractForm() {
   const [createdContractId, setCreatedContractId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Load available templates
+  // Load available reusable templates
   const loadTemplates = useCallback(async () => {
     try {
       const res = await fetch('/api/templates');
@@ -87,9 +81,6 @@ function NewContractForm() {
           if (draft.message) setMessage(draft.message);
           if (draft.requiresCounterSign !== undefined) setRequiresCounterSign(draft.requiresCounterSign);
           if (draft.signaturePage) setSignaturePage(String(draft.signaturePage));
-          if (draft.signatureX) setSignatureX(String(draft.signatureX));
-          if (draft.signatureY) setSignatureY(String(draft.signatureY));
-          if (draft.fields) setFields(draft.fields);
           if (draft.originalPdfBase64) {
             setFileBase64(draft.originalPdfBase64);
             try {
@@ -122,9 +113,6 @@ function NewContractForm() {
     setTitle(tpl.title);
     setFileBase64(tpl.pdfBase64);
     if (tpl.signaturePage) setSignaturePage(String(tpl.signaturePage));
-    if (tpl.signatureX) setSignatureX(String(tpl.signatureX));
-    if (tpl.signatureY) setSignatureY(String(tpl.signatureY));
-    if (tpl.fields) setFields(tpl.fields);
     if (tpl.requiresCounterSign !== undefined) setRequiresCounterSign(tpl.requiresCounterSign);
 
     try {
@@ -161,10 +149,7 @@ function NewContractForm() {
           title: templateTitle,
           pdfBase64: fileBase64,
           fileName: file?.name || `${templateTitle}.pdf`,
-          fields,
           signaturePage: signaturePage ? Number(signaturePage) : undefined,
-          signatureX: signatureX ? Number(signatureX) : undefined,
-          signatureY: signatureY ? Number(signatureY) : undefined,
           requiresCounterSign,
         }),
       });
@@ -229,9 +214,6 @@ function NewContractForm() {
       if (file) formData.append('file', file);
       if (fileBase64) formData.append('fileBase64', fileBase64);
       if (signaturePage) formData.append('signaturePage', signaturePage);
-      if (signatureX) formData.append('signatureX', signatureX);
-      if (signatureY) formData.append('signatureY', signatureY);
-      if (fields.length > 0) formData.append('fields', JSON.stringify(fields));
 
       const res = await fetch('/api/contracts', {
         method: 'POST',
@@ -278,9 +260,6 @@ function NewContractForm() {
       if (file) formData.append('file', file);
       if (fileBase64) formData.append('fileBase64', fileBase64);
       if (signaturePage) formData.append('signaturePage', signaturePage);
-      if (signatureX) formData.append('signatureX', signatureX);
-      if (signatureY) formData.append('signatureY', signatureY);
-      if (fields.length > 0) formData.append('fields', JSON.stringify(fields));
 
       const res = await fetch('/api/contracts', {
         method: 'POST',
@@ -338,7 +317,7 @@ function NewContractForm() {
               <p className="text-xs text-neutral-500">
                 {requiresCounterSign
                   ? 'Two-party signing link is ready. After client signs, you will counter-sign to finalize.'
-                  : 'A private signing link is ready for your client.'}
+                  : 'Fast client signing link is ready. Your client can review, zoom, and sign directly on mobile or desktop.'}
               </p>
             </div>
           </div>
@@ -403,7 +382,7 @@ function NewContractForm() {
               {draftId ? 'Resume / Edit Draft' : 'Create Signing Request'}
             </h1>
             <p className="text-sm text-neutral-500 mt-1">
-              Upload a PDF or choose a reusable template to send in seconds.
+              Fast 3-step contract creation. No coordinate guesswork or complex field mapping.
             </p>
           </div>
           {draftId && (
@@ -425,20 +404,18 @@ function NewContractForm() {
               {templates.length} saved
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedTemplateId}
-              onChange={(e) => handleSelectTemplate(e.target.value)}
-              className="w-full p-2 bg-white border border-neutral-300 text-xs font-medium text-black focus:outline-none focus:border-black"
-            >
-              <option value="">-- Choose a template to pre-populate document &amp; fields --</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title} {t.fields && t.fields.length > 0 ? `(${t.fields.length} fields)` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={selectedTemplateId}
+            onChange={(e) => handleSelectTemplate(e.target.value)}
+            className="w-full p-2 bg-white border border-neutral-300 text-xs font-medium text-black focus:outline-none focus:border-black"
+          >
+            <option value="">-- Choose a template to pre-populate document --</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -456,10 +433,12 @@ function NewContractForm() {
 
       <Card>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Step 1: Document Upload */}
+          {/* Step 1: Document Upload or Template */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-black">1. Contract Document</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-black">
+                Step 1: Contract Document
+              </h3>
               {fileBase64 && (
                 <button
                   type="button"
@@ -472,7 +451,7 @@ function NewContractForm() {
               )}
             </div>
 
-            <div className="border border-dashed border-neutral-300 p-6 text-center hover:border-black transition-colors bg-neutral-50/50">
+            <div className="border-2 border-dashed border-neutral-300 p-6 text-center hover:border-black transition-colors bg-neutral-50/50">
               <DocumentIcon className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
               {file ? (
                 <div className="space-y-2">
@@ -484,9 +463,6 @@ function NewContractForm() {
                       setFile(null);
                       setFileBase64(null);
                       setSignaturePage('');
-                      setSignatureX('');
-                      setSignatureY('');
-                      setFields([]);
                     }}
                     className="text-xs text-black underline font-medium cursor-pointer"
                   >
@@ -508,36 +484,62 @@ function NewContractForm() {
             </div>
           </div>
 
-          {/* Step 2: Contract Details */}
+          {/* Step 2: Contract Details & Signer Information */}
           <div className="space-y-4 pt-4 border-t border-neutral-100">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-black">2. Contract Information</h3>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-black">
+              Step 2: Contract &amp; Signer Information
+            </h3>
+
             <Input
               label="Contract Title"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Master Services Agreement 2026"
-              helperText="Descriptive title visible to you and the signer."
+              helperText="Descriptive title visible to you and the client."
             />
-          </div>
 
-          {/* Step 3: Signer Details & Two-Party Agreement Toggle */}
-          <div className="space-y-4 pt-4 border-t border-neutral-100">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-black">3. Signer Details &amp; Flow</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Client Full Legal Name"
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 placeholder="Juan Dela Cruz"
+                helperText="Client's name on the agreement."
               />
               <Input
                 label="Client Email Address"
                 type="email"
+                required
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
                 placeholder="client@company.com"
+                helperText="Where client receives confirmation."
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Expiration Date"
+                type="date"
+                required
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                helperText="Link will expire after this date."
+              />
+              <div className="flex flex-col space-y-1.5">
+                <label htmlFor="instructions-message" className="text-xs font-semibold uppercase tracking-wider text-neutral-700">
+                  Message to Client (Optional)
+                </label>
+                <input
+                  id="instructions-message"
+                  type="text"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Please review and sign."
+                  className="px-3.5 py-2 bg-white text-black text-xs border border-neutral-300 hover:border-black focus:border-black focus:outline-none"
+                />
+              </div>
             </div>
 
             {/* Two-Party Agreement Toggle */}
@@ -554,212 +556,52 @@ function NewContractForm() {
                     Requires sender counter-signature (2-party agreement)
                   </span>
                   <span className="text-[11px] text-neutral-500 block">
-                    When client signs, agreement pauses at &ldquo;Needs Counter-Signature&rdquo; until you counter-sign to seal it.
+                    When client signs, agreement pauses until you counter-sign to seal it.
                   </span>
                 </div>
               </label>
             </div>
           </div>
 
-          {/* Step 4: Signature & Multi-Field Placement */}
+          {/* Step 3: Clean Target Signature Page Designation */}
           <div className="space-y-4 pt-4 border-t border-neutral-100">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-black">
-                  4. Signature &amp; Document Fields
-                </h3>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Pre-assign signature, initials, date, or text inputs onto document pages.
-                </p>
-              </div>
-
-              {(file || fileBase64) && (
-                <Button
-                  type="button"
-                  variant={fields.length > 0 || signaturePage ? 'outline' : 'primary'}
-                  size="sm"
-                  onClick={() => setIsPrepModalOpen(true)}
-                  className="shrink-0 text-xs"
-                >
-                  {fields.length > 0
-                    ? `Edit Fields (${fields.length} set)`
-                    : signaturePage
-                    ? 'Change Location'
-                    : 'Open Visual Field Preparation Tool'}
-                </Button>
-              )}
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-black">
+                Step 3: Target Page Designation (Optional)
+              </h3>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Designate which page the client should sign on. Clients can pan, zoom, and sign directly on the document without drag-and-drop complexity.
+              </p>
             </div>
 
-            {!file && !fileBase64 ? (
-              <div className="p-4 border border-dashed border-neutral-300 bg-neutral-50/50 text-xs text-neutral-500 text-center">
-                Upload a contract PDF in Step 1 to visually set signature and fields.
-              </div>
-            ) : fields.length > 0 ? (
-              <div className="p-4 bg-white border border-neutral-300 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-black rounded-full" />
-                    <span className="text-xs font-bold text-black uppercase tracking-wider">
-                      {fields.length} Placed Fields Configured
-                    </span>
-                  </div>
-                  <span className="text-xs font-mono bg-neutral-100 border border-neutral-300 px-2 py-0.5">
-                    {fields.map((f) => f.type).join(', ')}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 pt-2 border-t border-neutral-100">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsPrepModalOpen(true)}
-                    className="text-xs"
-                  >
-                    Adjust Fields on Document
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFields([]);
-                      setSignaturePage('');
-                      setSignatureX('');
-                      setSignatureY('');
-                    }}
-                    className="text-xs text-neutral-600 hover:text-black underline font-medium cursor-pointer"
-                  >
-                    Clear All Fields
-                  </button>
-                </div>
-              </div>
-            ) : signaturePage ? (
-              <div className="p-4 bg-white border border-neutral-300 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 bg-black rounded-full" />
-                    <span className="text-xs font-bold text-black uppercase tracking-wider">
-                      Pre-Assigned Location Set
-                    </span>
-                  </div>
-                  <span className="text-xs font-mono bg-neutral-100 border border-neutral-300 px-2 py-0.5">
-                    Page {signaturePage} • ({signatureX || 70} pt, {signatureY || 115} pt)
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 pt-2 border-t border-neutral-100">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsPrepModalOpen(true)}
-                    className="text-xs"
-                  >
-                    Adjust on Document
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSignaturePage('');
-                      setSignatureX('');
-                      setSignatureY('');
-                    }}
-                    className="text-xs text-neutral-600 hover:text-black underline font-medium cursor-pointer"
-                  >
-                    Clear (Allow Client Free Placement)
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-neutral-50 border border-neutral-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-neutral-800">
-                    Free Placement (Default)
-                  </span>
-                  <span className="text-[11px] text-neutral-500 font-mono">
-                    Client chooses position
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-500">
-                  No fixed location designated. The client can freely position their signature anywhere on the document.
-                </p>
-                <div className="pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsPrepModalOpen(true)}
-                    className="text-xs"
-                  >
-                    Open Visual Field Preparation Tool
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Collapsible Manual Point Inputs */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setShowManualCoords(!showManualCoords)}
-                className="text-[11px] text-neutral-400 hover:text-neutral-700 underline cursor-pointer"
-              >
-                {showManualCoords ? '− Hide manual point inputs' : '+ Advanced: Manual point coordinates override'}
-              </button>
-
-              {showManualCoords && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 mt-2 border-t border-neutral-100">
-                  <Input
-                    label="Target Page"
+            <div className="p-4 bg-neutral-50 border border-neutral-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex-1">
+                  <label htmlFor="sig-page-select" className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
+                    Designated Signature Page
+                  </label>
+                  <input
+                    id="sig-page-select"
                     type="number"
                     min={1}
                     value={signaturePage}
                     onChange={(e) => setSignaturePage(e.target.value)}
-                    helperText="Target PDF page number"
-                    optional
-                  />
-                  <Input
-                    label="Horizontal Position (X)"
-                    type="number"
-                    value={signatureX}
-                    onChange={(e) => setSignatureX(e.target.value)}
-                    helperText="Left distance in points (default: 70)"
-                    optional
-                  />
-                  <Input
-                    label="Vertical Position (Y)"
-                    type="number"
-                    value={signatureY}
-                    onChange={(e) => setSignatureY(e.target.value)}
-                    helperText="Bottom distance in points (default: 115)"
-                    optional
+                    placeholder="Last page (Default)"
+                    className="w-full sm:w-48 px-3 py-2 bg-white text-black text-xs border border-neutral-300 focus:border-black focus:outline-none"
                   />
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Step 5: Configuration */}
-          <div className="space-y-4 pt-4 border-t border-neutral-100">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-black">5. Request Configuration</h3>
-            <Input
-              label="Expiration Date"
-              type="date"
-              required
-              value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
-              helperText="The client will not be able to sign after this date."
-            />
-            <div className="flex flex-col space-y-1.5">
-              <label htmlFor="instructions-message" className="text-sm font-semibold text-black">
-                Instructions / Message to Signer
-              </label>
-              <textarea
-                id="instructions-message"
-                rows={2}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white text-black text-sm border border-neutral-300 hover:border-black focus:border-black focus:outline-none"
-              />
+                <div className="text-[11px] text-neutral-500 sm:max-w-xs">
+                  {signaturePage ? (
+                    <span className="font-semibold text-black">
+                      Client will open directly to Page {signaturePage} with signature guidance.
+                    </span>
+                  ) : (
+                    <span>
+                      Leave empty to automatically designate the <strong>last page</strong> of the document.
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -788,45 +630,13 @@ function NewContractForm() {
               size="lg"
               isLoading={isLoading}
               loadingText="Creating Signing Request..."
-              disabled={(!file && !fileBase64) || !title || !clientName || !clientEmail}
+              disabled={(!file && !fileBase64) || !title || !clientEmail}
             >
-              CREATE SIGNING REQUEST
+              CREATE &amp; SEND CONTRACT
             </Button>
           </div>
         </form>
       </Card>
-
-      {/* Admin Visual Signature Location Preparation Modal */}
-      {isPrepModalOpen && fileBase64 && (
-        <AdminFieldPreparationModal
-          isOpen={isPrepModalOpen}
-          onClose={() => setIsPrepModalOpen(false)}
-          pdfBase64={fileBase64}
-          initialPlacement={{
-            page: signaturePage ? Number(signaturePage) : undefined,
-            signatureX: signatureX ? Number(signatureX) : undefined,
-            signatureY: signatureY ? Number(signatureY) : undefined,
-          }}
-          initialFields={fields}
-          onSavePlacement={(p) => {
-            setSignaturePage(String(p.page));
-            setSignatureX(String(p.signatureX));
-            setSignatureY(String(p.signatureY));
-          }}
-          onSaveFields={(savedFields, p) => {
-            setFields(savedFields);
-            setSignaturePage(String(p.page));
-            setSignatureX(String(p.signatureX));
-            setSignatureY(String(p.signatureY));
-          }}
-          onClearPlacement={() => {
-            setFields([]);
-            setSignaturePage('');
-            setSignatureX('');
-            setSignatureY('');
-          }}
-        />
-      )}
     </div>
   );
 }

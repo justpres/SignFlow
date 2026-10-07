@@ -372,5 +372,103 @@ test('In-situ required fields validation ensures all mandatory fields are comple
   assert.strictEqual(res3.valid, false);
   assert.match(res3.error, /legal name/);
 });
+test('Fast mobile signer stroke stack: undo pops last stroke, clear removes all', () => {
+  let strokes = [];
 
+  // Add stroke 1
+  strokes.push([
+    { x: 100, y: 150 },
+    { x: 105, y: 152 },
+    { x: 110, y: 155 },
+  ]);
+  assert.equal(strokes.length, 1);
 
+  // Add stroke 2
+  strokes.push([
+    { x: 110, y: 155 },
+    { x: 120, y: 160 },
+  ]);
+  assert.equal(strokes.length, 2);
+
+  // Word-style Undo: pop last stroke
+  strokes = strokes.slice(0, -1);
+  assert.equal(strokes.length, 1);
+  assert.equal(strokes[0].length, 3);
+
+  // Clear: empty all
+  strokes = [];
+  assert.equal(strokes.length, 0);
+});
+
+test('Fast mobile signer bounding box calculation to PDF coordinates', () => {
+  const pageDimensions = { width: 612, height: 792 };
+  const strokes = [
+    [
+      { x: 100, y: 200 },
+      { x: 250, y: 250 },
+    ],
+    [
+      { x: 120, y: 220 },
+      { x: 260, y: 270 },
+    ],
+  ];
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (const stroke of strokes) {
+    for (const pt of stroke) {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+  }
+
+  assert.equal(minX, 100);
+  assert.equal(maxX, 260);
+  assert.equal(minY, 200);
+  assert.equal(maxY, 270);
+
+  // PDF coordinates: PDF Y = pageHeight - maxY
+  const pdfX = minX;
+  const pdfY = pageDimensions.height - maxY;
+  assert.equal(pdfX, 100);
+  assert.equal(pdfY, 792 - 270); // 522
+});
+
+test('Fast signing confirmation validation: requires drawn signature, legal name, and terms agreement', () => {
+  function validateFastSigning({ signatureDataUrl, signerName, agreedToTerms }) {
+    if (!signatureDataUrl) {
+      return { valid: false, error: 'Please use the Pen to draw your signature.' };
+    }
+    if (!signerName || !signerName.trim()) {
+      return { valid: false, error: 'Please enter your full legal name.' };
+    }
+    if (!agreedToTerms) {
+      return { valid: false, error: 'You must agree to the contract terms before sealing.' };
+    }
+    return { valid: true };
+  }
+
+  // Missing signature
+  const res1 = validateFastSigning({ signatureDataUrl: null, signerName: 'Alice', agreedToTerms: true });
+  assert.equal(res1.valid, false);
+  assert.match(res1.error, /Pen/);
+
+  // Missing name
+  const res2 = validateFastSigning({ signatureDataUrl: SAMPLE_PNG_BASE64, signerName: '', agreedToTerms: true });
+  assert.equal(res2.valid, false);
+  assert.match(res2.error, /legal name/);
+
+  // Missing terms agreement
+  const res3 = validateFastSigning({ signatureDataUrl: SAMPLE_PNG_BASE64, signerName: 'Alice', agreedToTerms: false });
+  assert.equal(res3.valid, false);
+  assert.match(res3.error, /terms/);
+
+  // Valid
+  const res4 = validateFastSigning({ signatureDataUrl: SAMPLE_PNG_BASE64, signerName: 'Alice', agreedToTerms: true });
+  assert.equal(res4.valid, true);
+});
