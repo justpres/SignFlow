@@ -22,6 +22,8 @@ export async function POST(request: Request) {
       dateX,
       dateY,
       placement,
+      fields,
+      initialsDataUrl,
     } = body;
 
     if (!token || !clientName || !signatureDataUrl) {
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     // Atomic/Double submission prevention
-    if (contract.status === 'SIGNED') {
+    if (contract.status === 'SIGNED' || contract.status === 'WAITING_COUNTER_SIGN') {
       return NextResponse.json({
         error: 'Contract has already been signed.',
         signedAt: contract.signedAt,
@@ -100,15 +102,10 @@ export async function POST(request: Request) {
       userAgent,
       details: `Signed by ${clientName} (${signatureMethod || 'DRAW'})`,
     });
-    auditEvents.push({
-      action: 'SIGNED_PDF_GENERATED',
-      timestamp: nowIso,
-      ipAddress,
-      userAgent,
-      details: 'Official Certificate of Completion & sealed record generated',
-    });
 
-    // Generate signed PDF with pdf-lib: clean signature stamp on contract line + appended Certificate of Completion
+    const activeFields = fields || contract.fields;
+
+    // Generate signed PDF with pdf-lib: clean signature stamp on contract line + optional multi-fields
     const signedPdfBuffer = await generateSignedPdf({
       originalPdfBuffer,
       clientName,
@@ -129,21 +126,27 @@ export async function POST(request: Request) {
       dateX: finalDateX,
       dateY: finalDateY,
       attachCertificate: false,
+      fields: activeFields,
+      initialsPngBase64: initialsDataUrl,
     });
 
-    // Store signed PDF as separate immutable artifact
+    // Store signed PDF as artifact
     const signedStoragePath = `contracts/${contract.id}/signed.pdf`;
     await uploadContractFile(signedStoragePath, signedPdfBuffer, 'application/pdf');
 
+    const isTwoPartyCounterSign = Boolean(contract.requiresCounterSign);
+
     // Update contract state
-    contract.status = 'SIGNED';
+    contract.status = isTwoPartyCounterSign ? 'WAITING_COUNTER_SIGN' : 'SIGNED';
     contract.clientName = clientName;
     contract.signedAt = nowIso;
-    contract.finalizedAt = nowIso;
+    contract.finalizedAt = isTwoPartyCounterSign ? undefined : nowIso;
     contract.signedFilePath = signedStoragePath;
     contract.signedPdfBase64 = signedPdfBuffer.toString('base64');
     contract.signatureMethod = signatureMethod || 'DRAW';
+    contract.signatureImagePath = signatureDataUrl;
     contract.confirmationAccepted = true;
+    if (activeFields) contract.fields = activeFields;
     if (finalPage !== undefined) contract.signaturePage = finalPage;
     if (finalSigX !== undefined) contract.signatureX = finalSigX;
     if (finalSigY !== undefined) contract.signatureY = finalSigY;
@@ -162,8 +165,16 @@ export async function POST(request: Request) {
       signatureX: finalSigX,
       signatureY: finalSigY,
     }, ipAddress, userAgent);
-    await addAuditLog(contract.id, 'CONTRACT_SIGNED', { clientName, signedAt: nowIso }, ipAddress, userAgent);
-    await addAuditLog(contract.id, 'SIGNED_PDF_GENERATED', { filePath: signedStoragePath }, ipAddress, userAgent);
+
+    if (isTwoPartyCounterSign) {
+      await addAuditLog(contract.id, 'WAITING_COUNTER_SIGN', {
+        clientName,
+        signedAt: nowIso,
+      }, ipAddress, userAgent);
+    } else {
+      await addAuditLog(contract.id, 'CONTRACT_SIGNED', { clientName, signedAt: nowIso }, ipAddress, userAgent);
+      await addAuditLog(contract.id, 'SIGNED_PDF_GENERATED', { filePath: signedStoragePath }, ipAddress, userAgent);
+    }
 
     // Send Admin Notifications (Email & Telegram).
     // Note: Notification errors must not prevent contract finalization

@@ -9,6 +9,7 @@ interface SigningSuccessProps {
   signedAt: string;
   contractId: string;
   downloadUrl: string;
+  isWaitingCounterSign?: boolean;
 }
 
 export function SigningSuccess({
@@ -17,6 +18,7 @@ export function SigningSuccess({
   signedAt,
   contractId,
   downloadUrl,
+  isWaitingCounterSign = false,
 }: SigningSuccessProps) {
   // 5-second initial auto-close countdown
   const [secondsRemaining, setSecondsRemaining] = useState(5);
@@ -118,9 +120,13 @@ export function SigningSuccess({
           <div className="w-12 h-12 bg-black text-white mx-auto flex items-center justify-center">
             <CheckIcon className="w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-black">CONTRACT SIGNED</h1>
+          <h1 className="text-xl font-bold tracking-tight text-black">
+            {isWaitingCounterSign ? 'SIGNATURE SUBMITTED' : 'CONTRACT SIGNED'}
+          </h1>
           <p className="text-sm text-neutral-600">
-            Your contract has been successfully completed and finalized.
+            {isWaitingCounterSign
+              ? 'Your signature was recorded. The sender has been notified to counter-sign and seal this agreement.'
+              : 'Your contract has been successfully completed and finalized.'}
           </p>
         </div>
 

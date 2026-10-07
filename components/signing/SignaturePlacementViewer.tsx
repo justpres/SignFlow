@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/ui/Icons';
 import { Button } from '@/components/ui/Button';
-import { SignaturePlacement } from '@/lib/types';
+import { SignaturePlacement, PlacedField } from '@/lib/types';
 
 interface SignaturePlacementViewerProps {
   pdfBase64: string;
@@ -12,6 +12,8 @@ interface SignaturePlacementViewerProps {
   placement: SignaturePlacement;
   onPlacementChange: (placement: SignaturePlacement) => void;
   defaultPlacementPage?: number;
+  fields?: PlacedField[];
+  initialsDataUrl?: string;
 }
 
 const SIG_BOX_WIDTH_PT = 170;
@@ -24,6 +26,8 @@ export function SignaturePlacementViewer({
   placement,
   onPlacementChange,
   defaultPlacementPage,
+  fields,
+  initialsDataUrl,
 }: SignaturePlacementViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -36,10 +40,21 @@ export function SignaturePlacementViewer({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [focusedFieldIndex, setFocusedFieldIndex] = useState<number>(0);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number }>({
     width: 612,
     height: 792,
   });
+
+  const handleNextField = () => {
+    if (!fields || fields.length === 0) return;
+    const nextIdx = (focusedFieldIndex + 1) % fields.length;
+    setFocusedFieldIndex(nextIdx);
+    const target = fields[nextIdx];
+    if (target.page !== currentPage) {
+      setCurrentPage(target.page);
+    }
+  };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfDocRef = useRef<any>(null);
@@ -410,6 +425,17 @@ export function SignaturePlacementViewer({
 
         {/* Zoom & Reset Toolbar */}
         <div className="flex items-center space-x-2">
+          {fields && fields.length > 0 && (
+            <button
+              type="button"
+              onClick={handleNextField}
+              className="px-2.5 py-1 text-xs border border-black bg-black text-white hover:bg-neutral-800 font-semibold inline-flex items-center gap-1.5 shadow-sm cursor-pointer ml-1"
+            >
+              <span>Next Field ({focusedFieldIndex + 1}/{fields.length})</span>
+              <span>→</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleZoomOut}
@@ -450,7 +476,11 @@ export function SignaturePlacementViewer({
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-black inline-block" />
           <span>
-            {isCurrentPlacementPage ? (
+            {fields && fields.length > 0 ? (
+              <span className="font-semibold text-black">
+                Guided Signing: Field {focusedFieldIndex + 1} of {fields.length} ({fields[focusedFieldIndex]?.label || fields[focusedFieldIndex]?.type})
+              </span>
+            ) : isCurrentPlacementPage ? (
               <span className="font-semibold text-black">
                 Signature active on Page {placement.page}
               </span>
@@ -497,69 +527,148 @@ export function SignaturePlacementViewer({
             >
               <canvas ref={canvasRef} className="block pointer-events-none" />
 
-              {/* Draggable & Tappable Signature Badge (Pixel-Accurate to PDF Stamping) */}
-              {isCurrentPlacementPage && (
-                <div
-                  ref={badgeRef}
-                  tabIndex={0}
-                  role="region"
-                  aria-label="Signature badge. Drag or use arrow keys to position."
-                  onKeyDown={handleKeyDown}
-                  onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY, e)}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    const touch = e.touches[0];
-                    if (touch) {
-                      handlePointerDown(touch.clientX, touch.clientY, e);
-                    }
-                  }}
-                  style={{
-                    position: 'absolute',
-                    left: `${sigBoxLeftPx}px`,
-                    top: `${sigBoxTopPx}px`,
-                    width: `${sigBoxWidthPx}px`,
-                    touchAction: 'none',
-                  }}
-                  className={`select-none transition-shadow ${
-                    isDragging ? 'cursor-grabbing z-30' : 'cursor-grab z-20 hover:z-30'
-                  }`}
-                >
-                  {/* Drag Handle & Info Header Tab (Positioned above the signature box) */}
-                  <div
-                    className={`absolute -top-7 left-0 right-0 h-6 px-2 flex items-center justify-between text-[10px] font-mono border border-black shadow-sm pointer-events-none select-none transition-colors ${
-                      isDragging ? 'bg-black text-white ring-1 ring-black' : 'bg-black text-white hover:bg-neutral-800'
-                    }`}
-                  >
-                    <span className="flex items-center space-x-1 font-semibold truncate mr-1">
-                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                      </svg>
-                      <span className="truncate">Drag to position</span>
-                    </span>
-                    <span className="text-[9px] bg-neutral-800 text-neutral-200 px-1 py-0.5 border border-neutral-700 font-mono flex-shrink-0">
-                      P.{placement.page} ({placement.signatureX},{placement.signatureY})
-                    </span>
-                  </div>
+              {/* Render Multi-Fields if provided */}
+              {fields && fields.length > 0 ? (
+                fields
+                  .filter((f) => f.page === currentPage)
+                  .map((f) => {
+                    const isFocused = fields[focusedFieldIndex]?.id === f.id;
+                    const leftPx = Math.round(f.x * scale);
+                    const topPx = Math.round((pageDimensions.height - f.y - f.height) * scale);
+                    const widthPx = Math.round(f.width * scale);
+                    const heightPx = Math.round(f.height * scale);
 
-                  {/* Target 170x50pt Signature Box (Exact 1:1 match with generator.ts) */}
+                    return (
+                      <div
+                        key={f.id}
+                        style={{
+                          position: 'absolute',
+                          left: `${leftPx}px`,
+                          top: `${topPx}px`,
+                          width: `${widthPx}px`,
+                          height: `${heightPx}px`,
+                        }}
+                        className={`border-2 select-none transition-all ${
+                          isFocused
+                            ? 'border-black bg-white ring-2 ring-black shadow-xl z-20'
+                            : 'border-dashed border-neutral-700 bg-white/95 shadow-md z-10'
+                        }`}
+                      >
+                        {/* Header badge tab */}
+                        <div className="absolute -top-6 left-0 bg-black text-white text-[9px] font-mono font-bold px-1.5 py-0.5 uppercase flex items-center gap-1 shadow-sm">
+                          <span>{f.label || f.type}</span>
+                          {isFocused && (
+                            <span className="bg-white text-black px-1 text-[8px] font-bold">
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Content inside field */}
+                        <div className="w-full h-full p-1 flex items-center justify-center overflow-hidden pointer-events-none">
+                          {f.type === 'SIGNATURE' && (
+                            signatureDataUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={signatureDataUrl}
+                                alt="Signature"
+                                className="max-h-full max-w-full object-contain select-none"
+                              />
+                            ) : (
+                              <span className="text-[10px] text-neutral-400 font-mono">[ Signature ]</span>
+                            )
+                          )}
+                          {f.type === 'INITIALS' && (
+                            initialsDataUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={initialsDataUrl}
+                                alt="Initials"
+                                className="max-h-full max-w-full object-contain select-none"
+                              />
+                            ) : (
+                              <span className="text-[11px] font-bold font-mono text-black">
+                                {f.value || _signerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || 'IN'}
+                              </span>
+                            )
+                          )}
+                          {f.type === 'DATE' && (
+                            <span className="text-[11px] font-mono text-neutral-800">
+                              {f.value || new Date().toISOString().split('T')[0]}
+                            </span>
+                          )}
+                          {f.type === 'TEXT' && (
+                            <span className="text-[11px] text-neutral-800 font-medium truncate">
+                              {f.value || '[ Text Field ]'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+              ) : (
+                /* Single signature placement fallback */
+                isCurrentPlacementPage && (
                   <div
-                    style={{ height: `${sigBoxHeightPx}px` }}
-                    className={`w-full border-2 border-dashed border-black bg-white/90 flex items-center justify-center p-1 overflow-hidden transition-all ${
-                      isDragging ? 'shadow-2xl ring-2 ring-black bg-white' : 'shadow-md hover:shadow-lg'
+                    ref={badgeRef}
+                    tabIndex={0}
+                    role="region"
+                    aria-label="Signature badge. Drag or use arrow keys to position."
+                    onKeyDown={handleKeyDown}
+                    onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY, e)}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      const touch = e.touches[0];
+                      if (touch) {
+                        handlePointerDown(touch.clientX, touch.clientY, e);
+                      }
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: `${sigBoxLeftPx}px`,
+                      top: `${sigBoxTopPx}px`,
+                      width: `${sigBoxWidthPx}px`,
+                      touchAction: 'none',
+                    }}
+                    className={`select-none transition-shadow ${
+                      isDragging ? 'cursor-grabbing z-30' : 'cursor-grab z-20 hover:z-30'
                     }`}
                   >
-                    {signatureDataUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={signatureDataUrl}
-                        alt="Signature preview"
-                        className="max-h-full max-w-full object-contain pointer-events-none select-none"
-                      />
-                    ) : (
-                      <span className="text-[10px] text-neutral-400 font-mono">Signature Blank</span>
-                    )}
+                    <div
+                      className={`absolute -top-7 left-0 right-0 h-6 px-2 flex items-center justify-between text-[10px] font-mono border border-black shadow-sm pointer-events-none select-none transition-colors ${
+                        isDragging ? 'bg-black text-white ring-1 ring-black' : 'bg-black text-white hover:bg-neutral-800'
+                      }`}
+                    >
+                      <span className="flex items-center space-x-1 font-semibold truncate mr-1">
+                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                        </svg>
+                        <span className="truncate">Drag to position</span>
+                      </span>
+                      <span className="text-[9px] bg-neutral-800 text-neutral-200 px-1 py-0.5 border border-neutral-700 font-mono flex-shrink-0">
+                        P.{placement.page} ({placement.signatureX},{placement.signatureY})
+                      </span>
+                    </div>
+
+                    <div
+                      style={{ height: `${sigBoxHeightPx}px` }}
+                      className={`w-full border-2 border-dashed border-black bg-white/90 flex items-center justify-center p-1 overflow-hidden transition-all ${
+                        isDragging ? 'shadow-2xl ring-2 ring-black bg-white' : 'shadow-md hover:shadow-lg'
+                      }`}
+                    >
+                      {signatureDataUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={signatureDataUrl}
+                          alt="Signature preview"
+                          className="max-h-full max-w-full object-contain pointer-events-none select-none"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-neutral-400 font-mono">Signature Blank</span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )
               )}
             </div>
           </div>

@@ -1,5 +1,5 @@
-import { Contract, AuditLog, AuditAction } from '@/lib/types';
-import { getAdminDb } from './admin';
+import type { Contract, AuditLog, AuditAction, ContractTemplate } from '../types/index.ts';
+import { getAdminDb } from './admin.ts';
 import fs from 'fs';
 import path from 'path';
 
@@ -9,6 +9,7 @@ const LOCAL_DATA_DIR = process.env.VERCEL
   : path.join(process.cwd(), '.signflow_data');
 const CONTRACTS_FILE = path.join(LOCAL_DATA_DIR, 'contracts.json');
 const AUDITS_FILE = path.join(LOCAL_DATA_DIR, 'audits.json');
+const TEMPLATES_FILE = path.join(LOCAL_DATA_DIR, 'templates.json');
 export const LOCAL_STORAGE_DIR = path.join(LOCAL_DATA_DIR, 'storage');
 
 function ensureLocalDirs() {
@@ -24,6 +25,24 @@ function ensureLocalDirs() {
   if (!fs.existsSync(AUDITS_FILE)) {
     fs.writeFileSync(AUDITS_FILE, JSON.stringify([]));
   }
+  if (!fs.existsSync(TEMPLATES_FILE)) {
+    fs.writeFileSync(TEMPLATES_FILE, JSON.stringify([]));
+  }
+}
+
+function readLocalTemplates(): ContractTemplate[] {
+  ensureLocalDirs();
+  try {
+    const raw = fs.readFileSync(TEMPLATES_FILE, 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalTemplates(templates: ContractTemplate[]) {
+  ensureLocalDirs();
+  fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(templates, null, 2));
 }
 
 function readLocalContracts(): Contract[] {
@@ -177,3 +196,55 @@ export async function getAuditLogsForContract(contractId: string): Promise<Audit
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 }
+
+export async function saveTemplate(template: ContractTemplate): Promise<void> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    const cleanData = JSON.parse(JSON.stringify(template));
+    await adminDb.collection('templates').doc(template.id).set(cleanData);
+  } else {
+    const templates = readLocalTemplates();
+    const idx = templates.findIndex(t => t.id === template.id);
+    if (idx >= 0) {
+      templates[idx] = template;
+    } else {
+      templates.push(template);
+    }
+    writeLocalTemplates(templates);
+  }
+}
+
+export async function getTemplateById(id: string): Promise<ContractTemplate | null> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    const doc = await adminDb.collection('templates').doc(id).get();
+    if (!doc.exists) return null;
+    return doc.data() as ContractTemplate;
+  } else {
+    const templates = readLocalTemplates();
+    return templates.find(t => t.id === id) || null;
+  }
+}
+
+export async function getAllTemplates(): Promise<ContractTemplate[]> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    const snap = await adminDb.collection('templates').orderBy('createdAt', 'desc').get();
+    return snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+  } else {
+    const templates = readLocalTemplates();
+    return templates.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    await adminDb.collection('templates').doc(id).delete();
+  } else {
+    const templates = readLocalTemplates();
+    const filtered = templates.filter(t => t.id !== id);
+    writeLocalTemplates(filtered);
+  }
+}
+

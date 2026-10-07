@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/ui/Icons';
+import { PlacedField, FieldType } from '@/lib/types';
 
 interface AdminFieldPreparationModalProps {
   isOpen: boolean;
@@ -13,82 +14,117 @@ interface AdminFieldPreparationModalProps {
     signatureX?: number;
     signatureY?: number;
   };
+  initialFields?: PlacedField[];
   onSavePlacement: (placement: { page: number; signatureX: number; signatureY: number }) => void;
+  onSaveFields?: (fields: PlacedField[], primaryPlacement: { page: number; signatureX: number; signatureY: number }) => void;
   onClearPlacement: () => void;
 }
 
-const SIG_BOX_WIDTH_PT = 170;
-const SIG_BOX_HEIGHT_PT = 50;
+const FIELD_DEFAULTS: Record<FieldType, { width: number; height: number; label: string }> = {
+  SIGNATURE: { width: 170, height: 50, label: 'Signature Line' },
+  INITIALS: { width: 80, height: 40, label: 'Initials' },
+  DATE: { width: 110, height: 28, label: 'Date Signed' },
+  TEXT: { width: 160, height: 28, label: 'Text Field' },
+};
 
 export function AdminFieldPreparationModal({
   isOpen,
   onClose,
   pdfBase64,
   initialPlacement,
+  initialFields,
   onSavePlacement,
+  onSaveFields,
   onClearPlacement,
 }: AdminFieldPreparationModalProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageContainerRef = useRef<HTMLDivElement | null>(null);
-  const badgeRef = useRef<HTMLDivElement | null>(null);
 
   const [numPages, setNumPages] = useState<number>(1);
   const [currentPage, setCurrentPage] = useState<number>(initialPlacement?.page || 1);
   const [scale, setScale] = useState<number>(1.0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number }>({
     width: 612,
     height: 792,
   });
 
-  const [currentCoords, setCurrentCoords] = useState<{ x: number; y: number; page: number }>({
-    x: initialPlacement?.signatureX ?? 70,
-    y: initialPlacement?.signatureY ?? 115,
-    page: initialPlacement?.page ?? 1,
+  // Multi-fields collection
+  const [fields, setFields] = useState<PlacedField[]>(() => {
+    if (initialFields && initialFields.length > 0) return initialFields;
+    return [
+      {
+        id: 'field-sig-primary',
+        type: 'SIGNATURE',
+        page: initialPlacement?.page || 1,
+        x: initialPlacement?.signatureX ?? 70,
+        y: initialPlacement?.signatureY ?? 115,
+        width: 170,
+        height: 50,
+        label: 'Signature Line',
+        required: true,
+      },
+    ];
   });
+
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfDocRef = useRef<any>(null);
   const dragStartRef = useRef<{
     pointerX: number;
     pointerY: number;
-    initialSigX: number;
-    initialSigY: number;
-  }>({ pointerX: 0, pointerY: 0, initialSigX: 0, initialSigY: 0 });
-  const didDragRef = useRef<boolean>(false);
-  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
+    initialX: number;
+    initialY: number;
+    width: number;
+    height: number;
+  }>({ pointerX: 0, pointerY: 0, initialX: 0, initialY: 0, width: 170, height: 50 });
 
-  // Clamping helper ensuring signature box stays strictly within page bounds
-  const clampCoords = useCallback(
-    (targetX: number, targetY: number, pageNum: number) => {
+  // Clamp helper
+  const clampField = useCallback(
+    (targetX: number, targetY: number, width: number, height: number) => {
       const minTopMarginPt = Math.ceil(32 / scale);
-      const maxSigY = Math.round(pageDimensions.height - SIG_BOX_HEIGHT_PT - minTopMarginPt);
+      const maxY = Math.round(pageDimensions.height - height - minTopMarginPt);
 
-      const clampedX = Math.max(10, Math.min(targetX, Math.round(pageDimensions.width - SIG_BOX_WIDTH_PT - 10)));
-      const clampedY = Math.max(40, Math.min(targetY, Math.max(40, maxSigY)));
+      const clampedX = Math.max(10, Math.min(targetX, Math.round(pageDimensions.width - width - 10)));
+      const clampedY = Math.max(20, Math.min(targetY, Math.max(20, maxY)));
 
-      return {
-        page: pageNum,
-        x: clampedX,
-        y: clampedY,
-      };
+      return { x: clampedX, y: clampedY };
     },
     [pageDimensions.height, pageDimensions.width, scale]
   );
 
-  // Initialize coordinates when modal opens or initialPlacement changes
+  // Reset or initialize when modal opens
   useEffect(() => {
     if (isOpen) {
-      const initialPage = initialPlacement?.page || 1;
-      const initialX = initialPlacement?.signatureX ?? 70;
-      const initialY = initialPlacement?.signatureY ?? 115;
-      setCurrentCoords({ x: initialX, y: initialY, page: initialPage });
-      setCurrentPage(initialPage);
+      if (initialFields && initialFields.length > 0) {
+        setFields(initialFields);
+        setSelectedFieldId(initialFields[0].id);
+        setCurrentPage(initialFields[0].page || initialPlacement?.page || 1);
+      } else {
+        const initPage = initialPlacement?.page || 1;
+        setFields([
+          {
+            id: 'field-sig-primary',
+            type: 'SIGNATURE',
+            page: initPage,
+            x: initialPlacement?.signatureX ?? 70,
+            y: initialPlacement?.signatureY ?? 115,
+            width: 170,
+            height: 50,
+            label: 'Signature Line',
+            required: true,
+          },
+        ]);
+        setSelectedFieldId('field-sig-primary');
+        setCurrentPage(initPage);
+      }
     }
-  }, [isOpen, initialPlacement]);
+  }, [isOpen, initialPlacement, initialFields]);
 
   // Load PDF Document
   useEffect(() => {
@@ -115,15 +151,14 @@ export function AdminFieldPreparationModal({
 
         const targetPage = initialPlacement?.page && initialPlacement.page <= doc.numPages
           ? initialPlacement.page
-          : doc.numPages; // Default to last page where signature blocks typically reside
+          : doc.numPages;
 
         setCurrentPage(targetPage);
-        setCurrentCoords((prev) => ({ ...prev, page: targetPage }));
         setIsLoading(false);
       } catch (err: unknown) {
         if (isCancelled) return;
         console.error('PDF load error:', err);
-        setError('Failed to render PDF document for signature preparation.');
+        setError('Failed to render PDF document for field preparation.');
         setIsLoading(false);
       }
     }
@@ -134,7 +169,7 @@ export function AdminFieldPreparationModal({
     };
   }, [isOpen, pdfBase64, initialPlacement]);
 
-  // Render Current Page onto Canvas
+  // Render current page onto canvas
   useEffect(() => {
     if (!pdfDocRef.current || isLoading || !isOpen) return;
     let isCancelled = false;
@@ -179,90 +214,109 @@ export function AdminFieldPreparationModal({
     renderPage();
     return () => {
       isCancelled = true;
-      if (renderTask && typeof renderTask.cancel === 'function') {
+      if (renderTask) {
         try {
           renderTask.cancel();
         } catch {
-          // ignore cancellation errors
+          // ignore
         }
       }
     };
   }, [currentPage, scale, isLoading, isOpen]);
 
-  // Page Navigation
+  // Page navigation
   const goToPreviousPage = () => {
-    if (currentPage > 1) {
-      const newPage = currentPage - 1;
-      setCurrentPage(newPage);
-      setCurrentCoords((prev) => ({ ...prev, page: newPage }));
-    }
+    if (currentPage > 1) setCurrentPage((p) => p - 1);
   };
 
   const goToNextPage = () => {
-    if (currentPage < numPages) {
-      const newPage = currentPage + 1;
-      setCurrentPage(newPage);
-      setCurrentCoords((prev) => ({ ...prev, page: newPage }));
-    }
+    if (currentPage < numPages) setCurrentPage((p) => p + 1);
   };
 
-  // Dragging logic
-  const handleDragStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Add a new field
+  const addField = (type: FieldType) => {
+    const config = FIELD_DEFAULTS[type];
+    const pageFields = fields.filter((f) => f.page === currentPage);
+    const offset = pageFields.length * 36;
+    const initialY = Math.max(40, 160 - offset);
+
+    const newField: PlacedField = {
+      id: `field_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      type,
+      page: currentPage,
+      x: 70,
+      y: initialY,
+      width: config.width,
+      height: config.height,
+      label: config.label,
+      required: true,
+    };
+
+    setFields((prev) => [...prev, newField]);
+    setSelectedFieldId(newField.id);
+  };
+
+  // Delete a field
+  const removeField = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setFields((prev) => prev.filter((f) => f.id !== id));
+    if (selectedFieldId === id) setSelectedFieldId(null);
+  };
+
+  // Drag start
+  const handleDragStart = (field: PlacedField, clientX: number, clientY: number) => {
+    setSelectedFieldId(field.id);
+    setDraggingFieldId(field.id);
     setIsDragging(true);
-    didDragRef.current = false;
+
     dragStartRef.current = {
-      pointerX: e.clientX,
-      pointerY: e.clientY,
-      initialSigX: currentCoords.x,
-      initialSigY: currentCoords.y,
+      pointerX: clientX,
+      pointerY: clientY,
+      initialX: field.x,
+      initialY: field.y,
+      width: field.width,
+      height: field.height,
     };
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    const touch = e.touches[0];
-    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    setIsDragging(true);
-    didDragRef.current = false;
-    dragStartRef.current = {
-      pointerX: touch.clientX,
-      pointerY: touch.clientY,
-      initialSigX: currentCoords.x,
-      initialSigY: currentCoords.y,
-    };
-  };
-
+  // Drag move
   const handleDragMove = useCallback(
     (clientX: number, clientY: number) => {
-      if (!isDragging) return;
+      if (!isDragging || !draggingFieldId) return;
 
       const deltaPixelX = clientX - dragStartRef.current.pointerX;
       const deltaPixelY = clientY - dragStartRef.current.pointerY;
 
-      if (Math.abs(deltaPixelX) > 2 || Math.abs(deltaPixelY) > 2) {
-        didDragRef.current = true;
-      }
-
       const deltaPtX = Math.round(deltaPixelX / scale);
       const deltaPtY = Math.round(-deltaPixelY / scale);
 
-      const targetX = dragStartRef.current.initialSigX + deltaPtX;
-      const targetY = dragStartRef.current.initialSigY + deltaPtY;
+      const targetX = dragStartRef.current.initialX + deltaPtX;
+      const targetY = dragStartRef.current.initialY + deltaPtY;
 
-      const clamped = clampCoords(targetX, targetY, currentPage);
-      setCurrentCoords(clamped);
+      const clamped = clampField(
+        targetX,
+        targetY,
+        dragStartRef.current.width,
+        dragStartRef.current.height
+      );
+
+      setFields((prev) =>
+        prev.map((f) =>
+          f.id === draggingFieldId
+            ? { ...f, x: clamped.x, y: clamped.y }
+            : f
+        )
+      );
     },
-    [isDragging, scale, clampCoords, currentPage]
+    [isDragging, draggingFieldId, scale, clampField]
   );
 
   const handleDragEnd = useCallback(() => {
     setIsDragging(false);
-    touchStartPosRef.current = null;
+    setDraggingFieldId(null);
   }, []);
 
-  // Global listeners for mouse move and mouse up
+  // Global listeners for mouse move and up
   useEffect(() => {
     if (!isDragging) return;
 
@@ -283,7 +337,7 @@ export function AdminFieldPreparationModal({
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
-  // Touch move & touch end listeners
+  // Touch handlers
   useEffect(() => {
     if (!isDragging) return;
 
@@ -309,198 +363,140 @@ export function AdminFieldPreparationModal({
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
-  // Click or Tap anywhere on the page to jump badge to that position
-  const handlePageClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (didDragRef.current) {
-      didDragRef.current = false;
-      return;
+  // Save handler
+  const handleSave = () => {
+    const primarySig = fields.find((f) => f.type === 'SIGNATURE') || fields[0];
+    const primaryPlacement = primarySig
+      ? { page: primarySig.page, signatureX: primarySig.x, signatureY: primarySig.y }
+      : { page: currentPage, signatureX: 70, signatureY: 115 };
+
+    onSavePlacement(primaryPlacement);
+    if (onSaveFields) {
+      onSaveFields(fields, primaryPlacement);
     }
-
-    if (badgeRef.current && badgeRef.current.contains(e.target as Node)) {
-      return;
-    }
-
-    if (!pageContainerRef.current) return;
-    const rect = pageContainerRef.current.getBoundingClientRect();
-    const clickPixelX = e.clientX - rect.left;
-    const clickPixelY = e.clientY - rect.top;
-
-    const centeredPixelX = clickPixelX - (SIG_BOX_WIDTH_PT * scale) / 2;
-    const centeredPixelY = clickPixelY - (SIG_BOX_HEIGHT_PT * scale) / 2;
-
-    const targetPtX = Math.round(centeredPixelX / scale);
-    const targetPtY = Math.round(pageDimensions.height - centeredPixelY / scale - SIG_BOX_HEIGHT_PT);
-
-    const clamped = clampCoords(targetPtX, targetPtY, currentPage);
-    setCurrentCoords(clamped);
+    onClose();
   };
-
-  // Touch tap handling on mobile screens
-  const handlePageTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    const touch = e.touches[0];
-    if (touch) {
-      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    }
-  };
-
-  const handlePageTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!touchStartPosRef.current || didDragRef.current || !pageContainerRef.current) return;
-    const touch = e.changedTouches[0];
-    if (!touch) return;
-
-    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
-    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
-    const dt = Date.now() - touchStartPosRef.current.time;
-
-    // Clean tap: minimal movement and short duration
-    if (dx < 10 && dy < 10 && dt < 400) {
-      if (badgeRef.current && badgeRef.current.contains(e.target as Node)) {
-        return;
-      }
-      const rect = pageContainerRef.current.getBoundingClientRect();
-      const clickPixelX = touch.clientX - rect.left;
-      const clickPixelY = touch.clientY - rect.top;
-
-      const centeredPixelX = clickPixelX - (SIG_BOX_WIDTH_PT * scale) / 2;
-      const centeredPixelY = clickPixelY - (SIG_BOX_HEIGHT_PT * scale) / 2;
-
-      const targetPtX = Math.round(centeredPixelX / scale);
-      const targetPtY = Math.round(pageDimensions.height - centeredPixelY / scale - SIG_BOX_HEIGHT_PT);
-
-      const clamped = clampCoords(targetPtX, targetPtY, currentPage);
-      setCurrentCoords(clamped);
-    }
-    touchStartPosRef.current = null;
-  };
-
-  // Keyboard navigation for arrow key fine-tuning
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        e.preventDefault();
-        const step = e.shiftKey ? 10 : 2;
-        let nextX = currentCoords.x;
-        let nextY = currentCoords.y;
-
-        if (e.key === 'ArrowUp') nextY += step;
-        if (e.key === 'ArrowDown') nextY -= step;
-        if (e.key === 'ArrowLeft') nextX -= step;
-        if (e.key === 'ArrowRight') nextX += step;
-
-        const clamped = clampCoords(nextX, nextY, currentPage);
-        setCurrentCoords(clamped);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, currentCoords, currentPage, clampCoords]);
 
   if (!isOpen) return null;
 
-  // Convert PDF point coordinates to screen CSS pixels for rendering the draggable badge
-  const badgeLeftPx = currentCoords.x * scale;
-  const badgeTopPx = (pageDimensions.height - (currentCoords.y + SIG_BOX_HEIGHT_PT)) * scale;
-  const badgeWidthPx = SIG_BOX_WIDTH_PT * scale;
-  const badgeHeightPx = SIG_BOX_HEIGHT_PT * scale;
+  const currentPageFields = fields.filter((f) => f.page === currentPage);
+  const selectedField = fields.find((f) => f.id === selectedFieldId);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4 animate-fade-in">
-      <div className="bg-white border border-neutral-300 w-full max-w-5xl h-[92vh] max-h-[850px] flex flex-col shadow-2xl overflow-hidden">
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm"
+    >
+      <div className="bg-white border-2 border-black w-full max-w-5xl h-[94vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-white shrink-0">
+        <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-black text-white shrink-0">
           <div>
-            <h2 className="text-base font-bold text-black tracking-tight flex items-center gap-2">
-              <span className="w-2.5 h-2.5 bg-black inline-block" />
-              Prepare Signature Location (Visual Placement)
-            </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">
-              Navigate to the target page and click or drag the signature placeholder to position the client&apos;s signature blank.
+            <h2 className="text-base font-bold tracking-tight">Prepare Document Fields</h2>
+            <p className="text-xs text-neutral-300 mt-0.5">
+              Add signature, initials, date, or text inputs. Drag anywhere to position.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-neutral-500 hover:text-black text-xl p-1 font-mono transition-colors"
-            aria-label="Close modal"
+            className="text-white hover:text-neutral-300 font-mono text-xl p-1 leading-none"
+            title="Close"
           >
             ✕
           </button>
         </div>
 
-        {/* Toolbar */}
-        <div className="py-2 px-4 border-b border-neutral-200 bg-neutral-50 flex items-center justify-between shrink-0 text-xs">
-          {/* Page controls */}
+        {/* Toolbar: Page Controls & Add Field Tools */}
+        <div className="py-2.5 px-4 border-b border-neutral-200 bg-neutral-50 flex flex-wrap items-center justify-between gap-3 shrink-0 text-xs">
+          {/* Page navigation */}
           <div className="flex items-center space-x-2">
             <Button
               variant="outline"
               size="sm"
               onClick={goToPreviousPage}
               disabled={currentPage <= 1 || isLoading}
-              aria-label="Previous Page"
               className="h-8 px-2"
             >
               <ArrowLeftIcon className="w-3.5 h-3.5" />
             </Button>
-
-            <span className="font-mono text-xs px-2 py-1 bg-white border border-neutral-300">
+            <span className="font-mono text-xs px-2.5 py-1 bg-white border border-neutral-300">
               Page {currentPage} of {numPages}
             </span>
-
             <Button
               variant="outline"
               size="sm"
               onClick={goToNextPage}
               disabled={currentPage >= numPages || isLoading}
-              aria-label="Next Page"
               className="h-8 px-2"
             >
               <ArrowRightIcon className="w-3.5 h-3.5" />
             </Button>
           </div>
 
-          {/* Coordinates readout badge */}
-          <div className="hidden sm:flex items-center gap-3 font-mono text-xs text-neutral-600 bg-white border border-neutral-300 px-3 py-1">
-            <span>Target: <strong>Page {currentCoords.page}</strong></span>
-            <span>|</span>
-            <span>X: <strong>{currentCoords.x} pt</strong></span>
-            <span>|</span>
-            <span>Y: <strong>{currentCoords.y} pt</strong></span>
+          {/* Add Field Buttons */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-bold text-neutral-600 uppercase tracking-wider mr-1">
+              + Add:
+            </span>
+            <button
+              type="button"
+              onClick={() => addField('SIGNATURE')}
+              className="px-2.5 py-1 text-xs border border-black bg-black text-white hover:bg-neutral-800 font-medium"
+            >
+              Signature
+            </button>
+            <button
+              type="button"
+              onClick={() => addField('INITIALS')}
+              className="px-2.5 py-1 text-xs border border-neutral-400 bg-white hover:border-black text-black font-medium"
+            >
+              Initials
+            </button>
+            <button
+              type="button"
+              onClick={() => addField('DATE')}
+              className="px-2.5 py-1 text-xs border border-neutral-400 bg-white hover:border-black text-black font-medium"
+            >
+              Date Signed
+            </button>
+            <button
+              type="button"
+              onClick={() => addField('TEXT')}
+              className="px-2.5 py-1 text-xs border border-neutral-400 bg-white hover:border-black text-black font-medium"
+            >
+              Text Input
+            </button>
           </div>
 
-          {/* Zoom controls */}
-          <div className="flex items-center space-x-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setScale((s) => Math.max(0.6, s - 0.15))}
-              disabled={scale <= 0.6 || isLoading}
-              className="h-8 px-2 font-mono"
-            >
-              -
-            </Button>
-            <span className="font-mono text-xs w-12 text-center">{Math.round(scale * 100)}%</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setScale((s) => Math.min(2.0, s + 0.15))}
-              disabled={scale >= 2.0 || isLoading}
-              className="h-8 px-2 font-mono"
-            >
-              +
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setScale(1.0)}
-              className="h-8 px-2 text-[11px]"
-            >
-              Reset
-            </Button>
+          {/* Selected coordinates readout & Zoom */}
+          <div className="flex items-center space-x-2">
+            {selectedField && (
+              <span className="hidden md:inline-block font-mono text-[11px] bg-white border border-neutral-300 px-2 py-1">
+                {selectedField.label}: ({selectedField.x}, {selectedField.y}) pt
+              </span>
+            )}
+            <div className="flex items-center space-x-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setScale((s) => Math.max(0.6, s - 0.15))}
+                disabled={scale <= 0.6 || isLoading}
+                className="h-8 px-2 font-mono"
+              >
+                -
+              </Button>
+              <span className="font-mono text-xs w-10 text-center">{Math.round(scale * 100)}%</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setScale((s) => Math.min(2.0, s + 0.15))}
+                disabled={scale >= 2.0 || isLoading}
+                className="h-8 px-2 font-mono"
+              >
+                +
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -526,10 +522,7 @@ export function AdminFieldPreparationModal({
           {!isLoading && !error && (
             <div
               ref={pageContainerRef}
-              onClick={handlePageClick}
-              onTouchStart={handlePageTouchStart}
-              onTouchEnd={handlePageTouchEnd}
-              className="relative shadow-md border border-neutral-300 bg-white cursor-crosshair transition-shadow hover:shadow-lg"
+              className="relative shadow-md border border-neutral-300 bg-white cursor-default select-none"
               style={{
                 width: pageDimensions.width * scale,
                 height: pageDimensions.height * scale,
@@ -537,46 +530,76 @@ export function AdminFieldPreparationModal({
             >
               <canvas ref={canvasRef} className="block pointer-events-none" />
 
-              {/* Interactive Draggable Signature Placement Badge */}
-              <div
-                ref={badgeRef}
-                onMouseDown={handleDragStart}
-                onTouchStart={handleTouchStart}
-                style={{
-                  left: `${badgeLeftPx}px`,
-                  top: `${badgeTopPx}px`,
-                  width: `${badgeWidthPx}px`,
-                  height: `${badgeHeightPx}px`,
-                }}
-                className={`absolute select-none group border-2 border-dashed transition-shadow ${
-                  isDragging
-                    ? 'border-black bg-neutral-100/90 shadow-2xl cursor-grabbing'
-                    : 'border-black bg-white/95 shadow-md hover:shadow-xl cursor-grab'
-                }`}
-              >
-                {/* Drag Handle Tag on top */}
-                <div className="absolute -top-6 left-0 bg-black text-white text-[9px] font-bold tracking-wider px-2 py-0.5 uppercase flex items-center gap-1 shadow-sm">
-                  <span>Signature Line</span>
-                  <span className="text-[8px] opacity-75 font-mono">({currentCoords.x}, {currentCoords.y})</span>
-                </div>
+              {/* Placed Fields on Current Page */}
+              {currentPageFields.map((field) => {
+                const isSelected = selectedFieldId === field.id;
+                const isThisDragging = draggingFieldId === field.id;
+                const leftPx = Math.round(field.x * scale);
+                const topPx = Math.round((pageDimensions.height - field.y - field.height) * scale);
+                const widthPx = Math.round(field.width * scale);
+                const heightPx = Math.round(field.height * scale);
 
-                {/* Badge Interior */}
-                <div className="w-full h-full p-2 flex flex-col justify-between pointer-events-none">
-                  <div className="flex items-center justify-between text-[10px] text-neutral-500 font-medium">
-                    <span className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-black rounded-full" />
-                      Client Signature Area
-                    </span>
-                    <span className="text-[9px] font-mono text-neutral-400">170 × 50 pt</span>
-                  </div>
+                return (
+                  <div
+                    key={field.id}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      handleDragStart(field, e.clientX, e.clientY);
+                    }}
+                    onTouchStart={(e) => {
+                      if (e.touches.length === 1) {
+                        e.stopPropagation();
+                        handleDragStart(field, e.touches[0].clientX, e.touches[0].clientY);
+                      }
+                    }}
+                    style={{
+                      left: `${leftPx}px`,
+                      top: `${topPx}px`,
+                      width: `${widthPx}px`,
+                      height: `${heightPx}px`,
+                    }}
+                    className={`absolute select-none border-2 transition-shadow cursor-grab ${
+                      isThisDragging
+                        ? 'border-black bg-neutral-100/90 shadow-2xl cursor-grabbing z-30'
+                        : isSelected
+                        ? 'border-black bg-white/95 shadow-xl z-20'
+                        : 'border-dashed border-neutral-600 bg-white/80 hover:border-black z-10'
+                    }`}
+                  >
+                    {/* Handle Tag */}
+                    <div className="absolute -top-5 left-0 bg-black text-white text-[9px] font-bold tracking-wider px-1.5 py-0.5 uppercase flex items-center gap-1 shadow-sm">
+                      <span>{field.label || field.type}</span>
+                      <span className="text-[8px] opacity-75 font-mono">({field.x}, {field.y})</span>
+                      <button
+                        type="button"
+                        onClick={(e) => removeField(field.id, e)}
+                        className="ml-1 hover:text-red-300 text-[10px] leading-none"
+                        title="Delete field"
+                      >
+                        ×
+                      </button>
+                    </div>
 
-                  <div className="border-b border-black/40 border-dashed pb-0.5">
-                    <span className="text-[11px] font-mono text-neutral-400 italic">
-                      [ Signer stamps signature here ]
-                    </span>
+                    {/* Field Interior Content */}
+                    <div className="w-full h-full p-1.5 flex flex-col justify-between pointer-events-none">
+                      <div className="flex items-center justify-between text-[9px] text-neutral-600 font-medium">
+                        <span className="truncate">{field.label || field.type}</span>
+                        <span className="text-[8px] font-mono opacity-70">
+                          {field.width} × {field.height} pt
+                        </span>
+                      </div>
+                      <div className="border-b border-black/40 border-dashed pb-0.5">
+                        <span className="text-[10px] font-mono text-neutral-400 italic">
+                          {field.type === 'SIGNATURE' && '[ Signer Signature ]'}
+                          {field.type === 'INITIALS' && '[ Signer Initials ]'}
+                          {field.type === 'DATE' && '[ YYYY-MM-DD ]'}
+                          {field.type === 'TEXT' && '[ Text Input ]'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -594,8 +617,11 @@ export function AdminFieldPreparationModal({
               }}
               className="text-xs text-neutral-600 hover:text-black"
             >
-              Clear (Let Client Place Freely)
+              Clear Fields
             </Button>
+            <span className="text-xs text-neutral-500 font-mono">
+              Total placed: {fields.length} {fields.length === 1 ? 'field' : 'fields'}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -612,17 +638,10 @@ export function AdminFieldPreparationModal({
               type="button"
               variant="primary"
               size="sm"
-              onClick={() => {
-                onSavePlacement({
-                  page: currentCoords.page,
-                  signatureX: currentCoords.x,
-                  signatureY: currentCoords.y,
-                });
-                onClose();
-              }}
+              onClick={handleSave}
               className="text-xs"
             >
-              Save Signature Location (Page {currentCoords.page})
+              Save Field Placements ({fields.length})
             </Button>
           </div>
         </div>

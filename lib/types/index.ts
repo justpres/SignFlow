@@ -1,6 +1,37 @@
-export type ContractStatus = 'DRAFT' | 'SENT' | 'OPENED' | 'SIGNED' | 'EXPIRED' | 'REVOKED';
+export type ContractStatus = 'DRAFT' | 'SENT' | 'OPENED' | 'SIGNED' | 'EXPIRED' | 'REVOKED' | 'WAITING_COUNTER_SIGN';
 
 export type SignatureMethod = 'DRAW' | 'TYPE';
+
+export type FieldType = 'SIGNATURE' | 'INITIALS' | 'DATE' | 'TEXT';
+
+export interface PlacedField {
+  id: string;
+  type: FieldType;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string;
+  value?: string;
+  required?: boolean;
+  signerRole?: 'CLIENT' | 'SENDER';
+}
+
+export interface ContractTemplate {
+  id: string;
+  title: string;
+  description?: string;
+  pdfBase64: string;
+  fileName?: string;
+  fields?: PlacedField[];
+  signaturePage?: number;
+  signatureX?: number;
+  signatureY?: number;
+  requiresCounterSign?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
 
 export interface Contract {
   id: string;
@@ -31,6 +62,17 @@ export interface Contract {
   nameY?: number;
   dateX?: number;
   dateY?: number;
+  fields?: PlacedField[];
+  requiresCounterSign?: boolean;
+  counterSignPlacement?: {
+    page: number;
+    signatureX: number;
+    signatureY: number;
+  };
+  counterSignedAt?: string;
+  counterSignerName?: string;
+  counterSignatureDataUrl?: string;
+  templateId?: string;
 }
 
 export interface SignaturePlacement {
@@ -53,7 +95,10 @@ export type AuditAction =
   | 'SIGNED_PDF_GENERATED'
   | 'CONTRACT_DOWNLOADED'
   | 'CONTRACT_REVOKED'
-  | 'CONTRACT_EXPIRED';
+  | 'CONTRACT_EXPIRED'
+  | 'DRAFT_SAVED'
+  | 'WAITING_COUNTER_SIGN'
+  | 'COUNTER_SIGNATURE_COMPLETED';
 
 export interface AuditLog {
   id: string;

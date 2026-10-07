@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { LockIcon, DocumentIcon } from '@/components/ui/Icons';
-import { SignaturePlacement } from '@/lib/types';
+import { SignaturePlacement, PlacedField } from '@/lib/types';
 
 interface ContractData {
   id: string;
@@ -30,6 +30,8 @@ interface ContractData {
   nameY?: number;
   dateX?: number;
   dateY?: number;
+  fields?: PlacedField[];
+  requiresCounterSign?: boolean;
 }
 
 interface SigningFlowProps {
@@ -49,10 +51,13 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
   // Form inputs
   const [signerName, setSignerName] = useState<string>('');
+  const [signerInitials, setSignerInitials] = useState<string>('');
+  const [textFieldsValues, setTextFieldsValues] = useState<Record<string, string>>({});
   const [signatureMethod, setSignatureMethod] = useState<'DRAW' | 'TYPE'>('DRAW');
   const [drawnSignatureDataUrl, setDrawnSignatureDataUrl] = useState<string | null>(null);
   const [typedSignatureDataUrl, setTypedSignatureDataUrl] = useState<string | null>(null);
   const [confirmationChecked, setConfirmationChecked] = useState<boolean>(false);
+  const [isWaitingCounterSign, setIsWaitingCounterSign] = useState<boolean>(false);
 
   // Placement state
   const [placement, setPlacement] = useState<SignaturePlacement>({
@@ -109,6 +114,16 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
       setContract(data.contract);
       setSignerName(data.contract.clientName || '');
+      if (data.contract.clientName) {
+        setSignerInitials(data.contract.clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase());
+      }
+      if (data.contract.fields) {
+        const textVals: Record<string, string> = {};
+        data.contract.fields.forEach((f: PlacedField) => {
+          if (f.type === 'TEXT' && f.value) textVals[f.id] = f.value;
+        });
+        setTextFieldsValues(textVals);
+      }
       setPdfBase64(data.pdfBase64);
 
       if (data.contract.signaturePage || data.contract.signatureX || data.contract.signatureY) {
@@ -162,6 +177,22 @@ export function SigningFlow({ token }: SigningFlowProps) {
     setValidationError(null);
 
     try {
+      const resolvedFields = contract?.fields?.map((f) => {
+        if (f.type === 'INITIALS') {
+          return {
+            ...f,
+            value: signerInitials || signerName.split(' ').map((n) => n[0]).join('').toUpperCase() || 'IN',
+          };
+        }
+        if (f.type === 'TEXT') {
+          return { ...f, value: textFieldsValues[f.id] || '' };
+        }
+        if (f.type === 'DATE') {
+          return { ...f, value: new Date().toISOString().split('T')[0] };
+        }
+        return f;
+      });
+
       const res = await fetch('/api/contracts/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -177,6 +208,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
           nameY: placement.nameY,
           dateX: placement.dateX,
           dateY: placement.dateY,
+          fields: resolvedFields,
         }),
       });
 
@@ -191,6 +223,10 @@ export function SigningFlow({ token }: SigningFlowProps) {
         setShowFinalModal(false);
         setIsFinalizing(false);
         return;
+      }
+
+      if (data.status === 'WAITING_COUNTER_SIGN') {
+        setIsWaitingCounterSign(true);
       }
 
       setFinalSuccessData({
@@ -218,6 +254,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
         signedAt={finalSuccessData.signedAt}
         contractId={finalSuccessData.contractId}
         downloadUrl={finalSuccessData.downloadUrl}
+        isWaitingCounterSign={isWaitingCounterSign}
       />
     );
   }
@@ -442,6 +479,40 @@ export function SigningFlow({ token }: SigningFlowProps) {
               )}
             </div>
 
+            {/* Initials Input (if contract has initials fields) */}
+            {contract?.fields?.some((f) => f.type === 'INITIALS') && (
+              <div className="pt-2 border-t border-neutral-100">
+                <Input
+                  label="Your Legal Initials"
+                  required
+                  value={signerInitials}
+                  onChange={(e) => setSignerInitials(e.target.value.toUpperCase())}
+                  placeholder="JD"
+                  helperText="Stamped on document margin/initials lines."
+                />
+              </div>
+            )}
+
+            {/* Additional Text Inputs (if contract has text fields) */}
+            {contract?.fields?.some((f) => f.type === 'TEXT') && (
+              <div className="pt-2 border-t border-neutral-100 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-black">Additional Document Details</h4>
+                {contract.fields
+                  .filter((f) => f.type === 'TEXT')
+                  .map((field) => (
+                    <Input
+                      key={field.id}
+                      label={field.label || 'Additional Detail'}
+                      value={textFieldsValues[field.id] || ''}
+                      onChange={(e) =>
+                        setTextFieldsValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                      }
+                      placeholder="e.g. Title / Organization"
+                    />
+                  ))}
+              </div>
+            )}
+
             {validationError && (
               <div className="p-3 border border-black bg-neutral-50 text-xs font-medium text-black" role="alert">
                 <span className="font-bold underline mr-1">Please note:</span>
@@ -473,6 +544,28 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   placement={placement}
                   onPlacementChange={setPlacement}
                   defaultPlacementPage={contract.signaturePage}
+                  fields={contract.fields?.map((f) => {
+                    if (f.type === 'INITIALS') {
+                      return {
+                        ...f,
+                        value:
+                          signerInitials ||
+                          signerName
+                            .split(' ')
+                            .map((n) => n[0])
+                            .join('')
+                            .toUpperCase() ||
+                          'IN',
+                      };
+                    }
+                    if (f.type === 'TEXT') {
+                      return { ...f, value: textFieldsValues[f.id] || '' };
+                    }
+                    if (f.type === 'DATE') {
+                      return { ...f, value: new Date().toISOString().split('T')[0] };
+                    }
+                    return f;
+                  })}
                 />
               ) : (
                 <div className="flex-1 border border-neutral-300 flex items-center justify-center text-xs text-neutral-500 bg-neutral-50">
