@@ -1,14 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTemplateById, deleteTemplate } from '@/lib/firebase/service';
-import { getAdminSession } from '@/lib/auth/session';
-
-function isTemplateOwner(session: { userId?: string; email: string }, template: { userId?: string; ownerEmail?: string }): boolean {
-  if (session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app')) return true;
-  if (!template.userId && !template.ownerEmail) return true;
-  if (template.userId && session.userId && template.userId === session.userId) return true;
-  if (template.ownerEmail && template.ownerEmail.toLowerCase() === session.email.toLowerCase()) return true;
-  return false;
-}
+import { getAdminSession, isTemplateOwner } from '@/lib/auth/session';
 
 export async function GET(
   _request: Request,

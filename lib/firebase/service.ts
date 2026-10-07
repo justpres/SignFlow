@@ -181,10 +181,15 @@ export async function getAllContracts(userId?: string, ownerEmail?: string): Pro
   if (adminDb) {
     if (userId) {
       const snap = await adminDb.collection('contracts').where('userId', '==', userId).get();
-      let list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
-      if (list.length === 0 && ownerEmail) {
-        const emailSnap = await adminDb.collection('contracts').where('ownerEmail', '==', ownerEmail).get();
-        list = emailSnap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+      const list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+      if (ownerEmail) {
+        const emailSnap = await adminDb.collection('contracts').where('ownerEmail', '==', ownerEmail.toLowerCase()).get();
+        const emailDocs = emailSnap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+        for (const c of emailDocs) {
+          if (!list.some(existing => existing.id === c.id)) {
+            list.push(c);
+          }
+        }
       }
       return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else {
@@ -305,10 +310,15 @@ export async function getAllTemplates(userId?: string, ownerEmail?: string): Pro
   if (adminDb) {
     if (userId) {
       const snap = await adminDb.collection('templates').where('userId', '==', userId).get();
-      let list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
-      if (list.length === 0 && ownerEmail) {
-        const emailSnap = await adminDb.collection('templates').where('ownerEmail', '==', ownerEmail).get();
-        list = emailSnap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+      const list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+      if (ownerEmail) {
+        const emailSnap = await adminDb.collection('templates').where('ownerEmail', '==', ownerEmail.toLowerCase()).get();
+        const emailDocs = emailSnap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+        for (const t of emailDocs) {
+          if (!list.some(existing => existing.id === t.id)) {
+            list.push(t);
+          }
+        }
       }
       return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else {

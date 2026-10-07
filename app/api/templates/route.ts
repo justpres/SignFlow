@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAllTemplates, saveTemplate } from '@/lib/firebase/service';
-import { getAdminSession } from '@/lib/auth/session';
+import { getAdminSession, isGlobalAdmin } from '@/lib/auth/session';
 import { ContractTemplate } from '@/lib/types';
 
 export async function GET() {
@@ -9,8 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const isGlobalAdmin = session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app');
-  const templates = isGlobalAdmin
+  const templates = isGlobalAdmin(session.email)
     ? await getAllTemplates()
     : await getAllTemplates(session.userId, session.email);
   return NextResponse.json({ templates });

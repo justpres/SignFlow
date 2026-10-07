@@ -43,6 +43,9 @@ export default function ContractDetailPage() {
         const data = await res.json();
         setContract(data.contract);
         setAuditLogs(data.auditLogs || []);
+        if (data.contract.ownerName) {
+          setCounterSignerName((curr) => (curr === 'SignFlow Administrator' ? data.contract.ownerName : curr));
+        }
       }
     } catch (e) {
       console.error('Failed to load contract details:', e);
@@ -52,6 +55,20 @@ export default function ContractDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    async function loadSession() {
+      try {
+        const res = await fetch('/api/auth/session');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.user?.name) {
+            setCounterSignerName(data.user.name);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadSession();
     fetchDetails();
   }, [fetchDetails]);
 

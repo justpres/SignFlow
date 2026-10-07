@@ -10,10 +10,11 @@ export async function createUserSession(user: {
   photoUrl?: string;
 }): Promise<void> {
   const cookieStore = await cookies();
+  const normalizedEmail = user.email.trim().toLowerCase();
   const sessionData: UserSession = {
     userId: user.userId,
-    email: user.email,
-    name: user.name || user.email.split('@')[0],
+    email: normalizedEmail,
+    name: user.name || normalizedEmail.split('@')[0],
     photoUrl: user.photoUrl,
     authenticatedAt: Date.now(),
   };
@@ -45,10 +46,11 @@ export async function getUserSession(): Promise<UserSession | null> {
     const raw = Buffer.from(sessionCookie.value, 'base64').toString('utf-8');
     const data = JSON.parse(raw);
     if (!data.email) return null;
+    const normalizedEmail = data.email.trim().toLowerCase();
     return {
-      userId: data.userId || ('usr_' + Buffer.from(data.email).toString('hex').slice(0, 10)),
-      email: data.email,
-      name: data.name || data.email.split('@')[0],
+      userId: data.userId || ('usr_' + Buffer.from(normalizedEmail).toString('hex').slice(0, 10)),
+      email: normalizedEmail,
+      name: data.name || normalizedEmail.split('@')[0],
       photoUrl: data.photoUrl,
       authenticatedAt: data.authenticatedAt || Date.now(),
     };
@@ -69,3 +71,5 @@ export async function destroyAdminSession(): Promise<void> {
 export async function destroyUserSession(): Promise<void> {
   return destroyAdminSession();
 }
+
+export { isGlobalAdmin, isContractOwner, isTemplateOwner } from './permissions.ts';

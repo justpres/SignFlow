@@ -1,15 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getContractById } from '@/lib/firebase/service';
 import { getContractFileBuffer } from '@/lib/firebase/storage';
-import { getAdminSession } from '@/lib/auth/session';
-
-function isContractOwner(session: { userId?: string; email: string }, contract: { userId?: string; ownerEmail?: string }): boolean {
-  if (session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app')) return true;
-  if (!contract.userId && !contract.ownerEmail) return true;
-  if (contract.userId && session.userId && contract.userId === session.userId) return true;
-  if (contract.ownerEmail && contract.ownerEmail.toLowerCase() === session.email.toLowerCase()) return true;
-  return false;
-}
+import { getAdminSession, isContractOwner } from '@/lib/auth/session';
 
 export async function GET(
   request: Request,

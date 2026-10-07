@@ -3,7 +3,7 @@ import { getAllContracts, saveContract, addAuditLog, getContractById } from '@/l
 import { uploadContractFile } from '@/lib/firebase/storage';
 import { generateSigningToken, hashSigningToken } from '@/lib/contracts/token';
 import { Contract, PlacedField } from '@/lib/types';
-import { getAdminSession } from '@/lib/auth/session';
+import { getAdminSession, isGlobalAdmin, isContractOwner } from '@/lib/auth/session';
 
 export async function GET() {
   const session = await getAdminSession();
@@ -11,8 +11,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const isGlobalAdmin = session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app');
-  const contracts = isGlobalAdmin
+  const contracts = isGlobalAdmin(session.email)
     ? await getAllContracts()
     : await getAllContracts(session.userId, session.email);
   return NextResponse.json({ contracts });
@@ -59,6 +58,12 @@ export async function POST(request: Request) {
     let existingContract: Contract | null = null;
     if (draftId) {
       existingContract = await getContractById(draftId);
+      if (existingContract && !isContractOwner(session, existingContract)) {
+        return NextResponse.json(
+          { error: 'Forbidden: You do not have permission to modify this contract or draft' },
+          { status: 403 }
+        );
+      }
     }
 
     // Determine file buffer

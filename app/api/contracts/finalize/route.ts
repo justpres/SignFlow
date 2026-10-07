@@ -185,7 +185,7 @@ export async function POST(request: Request) {
     // Dispatched asynchronously with graceful error handling
     try {
       await sendContractSignedEmail({
-        to: process.env.ADMIN_EMAIL || 'admin@signflow.app',
+        to: contract.ownerEmail || process.env.ADMIN_EMAIL || 'admin@signflow.app',
         contractTitle: contract.title,
         clientName,
         signedAt: nowIso,
