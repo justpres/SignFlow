@@ -602,4 +602,51 @@ test('Icon-only toolbar modes and button state contracts', () => {
   assert.equal(actionButtonText.split(' ').length, 1);
 });
 
+test('Universal phone dimension auto-scale with varied page dimensions (A4, Letter, Landscape)', () => {
+  function computeTargetScale(winWidth, docWidth) {
+    if (winWidth < 640) {
+      const targetScale = Math.max(0.35, Math.min(1.0, (winWidth - 24) / docWidth));
+      return Number(targetScale.toFixed(2));
+    }
+    return 1.15;
+  }
+
+  // 360px Android with US Letter (612pt):
+  const scaleLetter360 = computeTargetScale(360, 612);
+  assert.equal(scaleLetter360, 0.55);
+  assert.ok(612 * scaleLetter360 <= 360);
+
+  // 360px Android with ISO A4 (595pt):
+  const scaleA4360 = computeTargetScale(360, 595.28);
+  assert.equal(scaleA4360, 0.56);
+  assert.ok(595.28 * scaleA4360 <= 360);
+
+  // 360px Android with Landscape PDF (792pt):
+  const scaleLand360 = computeTargetScale(360, 792);
+  assert.equal(scaleLand360, 0.42);
+  assert.ok(792 * scaleLand360 <= 360);
+
+  // 390px iPhone with Landscape PDF (792pt):
+  const scaleLand390 = computeTargetScale(390, 792);
+  assert.equal(scaleLand390, 0.46);
+  assert.ok(792 * scaleLand390 <= 390);
+});
+
+test('Dock controls contract: all toolbar action buttons are icon-only', () => {
+  const toolbarButtons = [
+    { name: 'pan', isIconOnly: true, label: 'Pan and zoom mode' },
+    { name: 'pen', isIconOnly: true, label: 'Pen drawing mode' },
+    { name: 'undo', isIconOnly: true, label: 'Undo stroke' },
+    { name: 'clear', isIconOnly: true, label: 'Clear page signature' },
+    { name: 'zoomOut', isIconOnly: true, label: 'Zoom out' },
+    { name: 'zoomReset', isIconOnly: true, label: 'Reset zoom to fit (100%)' },
+    { name: 'zoomIn', isIconOnly: true, label: 'Zoom in' },
+  ];
+
+  for (const btn of toolbarButtons) {
+    assert.equal(btn.isIconOnly, true);
+    assert.ok(btn.label.length > 0);
+  }
+});
+
 

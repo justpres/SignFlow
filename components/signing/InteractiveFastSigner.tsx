@@ -8,9 +8,9 @@ import {
   TrashIcon,
   ZoomInIcon,
   ZoomOutIcon,
+  ResetZoomIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CheckIcon,
 } from '@/components/ui/Icons';
 
 export interface InteractiveFastSignerProps {
@@ -40,7 +40,7 @@ export function InteractiveFastSigner({
   pdfBase64,
   contractTitle,
   designatedPage,
-  signatureDataUrl,
+  signatureDataUrl: _signatureDataUrl,
   onSignatureChange,
   onProceedToSign,
 }: InteractiveFastSignerProps) {
@@ -279,6 +279,22 @@ export function InteractiveFastSigner({
     };
   }, [pdfBase64, designatedPage]);
 
+  // Handle window resizing and orientation changes dynamically for universal phone support
+  useEffect(() => {
+    function handleResize() {
+      if (typeof window === 'undefined') return;
+      const winWidth = window.innerWidth;
+      if (winWidth < 640) {
+        const docWidth = pageDimensions.width || 612;
+        const targetScale = Math.max(0.35, Math.min(1.0, (winWidth - 24) / docWidth));
+        setScale(Number(targetScale.toFixed(2)));
+      }
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [pageDimensions.width]);
+
   // Render current PDF page
   useEffect(() => {
     let isCancelled = false;
@@ -366,7 +382,11 @@ export function InteractiveFastSigner({
     const canvas = inkCanvasRef.current;
     if (!canvas) return;
 
-    canvas.setPointerCapture(e.pointerId);
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // In some mobile WebViews pointer capture can throw if already ended
+    }
     isDrawingRef.current = true;
 
     const rect = canvas.getBoundingClientRect();
@@ -436,8 +456,12 @@ export function InteractiveFastSigner({
   const handlePointerUpOrCancel = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (mode !== 'PEN' || !isDrawingRef.current) return;
     const canvas = inkCanvasRef.current;
-    if (canvas && canvas.hasPointerCapture(e.pointerId)) {
-      canvas.releasePointerCapture(e.pointerId);
+    try {
+      if (canvas && canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignore if pointer capture already lost
     }
     isDrawingRef.current = false;
 
@@ -520,53 +544,22 @@ export function InteractiveFastSigner({
   const handleZoomOut = () => setScale((s) => Math.max(Number((s - 0.2).toFixed(2)), 0.4));
   const handleResetZoom = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 640) {
-      const targetScale = Math.max(0.5, Math.min(1.0, (window.innerWidth - 20) / 612));
+      const docWidth = pageDimensions.width || 612;
+      const targetScale = Math.max(0.35, Math.min(1.0, (window.innerWidth - 24) / docWidth));
       setScale(Number(targetScale.toFixed(2)));
     } else {
       setScale(1.0);
     }
   };
 
-  const hasSignatureRecorded = Boolean(signatureDataUrl || currentStrokes.length > 0);
-
   return (
     <div className="flex flex-col h-full w-full bg-neutral-100 select-none overflow-hidden relative font-sans">
-      {/* Top Status Notification Banner */}
-      <div className="flex-shrink-0 bg-white border-b border-neutral-300 px-3 py-2 flex items-center justify-between text-xs">
-        <div className="flex items-center space-x-2 truncate min-w-0">
-          <span className="font-bold text-black uppercase tracking-wider text-[11px] truncate max-w-[140px] sm:max-w-none">
-            {contractTitle || 'Contract Document'}
-          </span>
-          <span className="text-neutral-400">|</span>
-          <span className="text-neutral-600 font-mono text-[11px] shrink-0">
-            Page {currentPage} of {numPages}
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-1.5 shrink-0">
-          {hasSignatureRecorded && (
-            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-mono font-bold tracking-wider uppercase">
-              <CheckIcon className="w-3 h-3 text-black" />
-              <span className="hidden xs:inline">SIGNED</span>
-            </span>
-          )}
-          {mode === 'PEN' ? (
-            <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 bg-black text-white text-[10px] font-bold tracking-wider uppercase">
-              <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-              <span>PEN MODE</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-neutral-200 text-neutral-800 text-[10px] font-semibold tracking-wider uppercase">
-              <span>PAN &amp; ZOOM</span>
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Main Interactive Document Viewport */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 relative overflow-auto p-4 transition-colors pb-36 sm:pb-24 ${
+        aria-label={contractTitle || 'Contract Document'}
+        tabIndex={0}
+        className={`flex-1 relative overflow-auto p-3 sm:p-4 transition-colors pb-36 sm:pb-24 ${
           mode === 'PEN' ? 'touch-none overflow-hidden cursor-crosshair bg-neutral-200/90' : 'cursor-grab active:cursor-grabbing bg-neutral-100'
         }`}
         onMouseDown={handleMouseDownNavigate}
@@ -704,11 +697,11 @@ export function InteractiveFastSigner({
               <button
                 type="button"
                 onClick={handleResetZoom}
-                className="h-8 sm:h-9 px-1.5 sm:px-2 text-[10px] sm:text-[11px] font-mono font-bold border-2 border-neutral-300 bg-white text-black hover:border-black transition-colors cursor-pointer flex items-center justify-center min-w-[2.75rem] text-center"
-                aria-label="Reset zoom"
-                title="Reset zoom"
+                className="w-8 h-8 sm:w-9 sm:h-9 border-2 border-neutral-300 bg-white text-black hover:border-black transition-colors cursor-pointer flex items-center justify-center"
+                aria-label={`Reset zoom to fit (${Math.round(scale * 100)}%)`}
+                title={`Reset zoom to fit (${Math.round(scale * 100)}%)`}
               >
-                {Math.round(scale * 100)}%
+                <ResetZoomIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
 
               <button

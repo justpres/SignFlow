@@ -6,7 +6,7 @@ import { SigningErrorState } from '@/components/signing/SigningErrorState';
 import { SigningSuccess } from '@/components/signing/SigningSuccess';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { LockIcon, WarningIcon } from '@/components/ui/Icons';
+import { LockIcon, WarningIcon, CheckIcon } from '@/components/ui/Icons';
 import { PlacedField } from '@/lib/types';
 
 interface ContractData {
@@ -341,13 +341,19 @@ export function SigningFlow({ token }: SigningFlowProps) {
     <div className="h-screen w-screen bg-white flex flex-col text-black overflow-hidden select-none">
       {/* Top Header: Immediate Access with Legal Name & Trust Indicator */}
       <header className="flex-shrink-0 border-b border-neutral-300 bg-white px-2.5 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-2 sm:gap-3">
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+        <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0 shrink">
           <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 bg-black shrink-0" aria-hidden="true" />
           <span className="font-bold tracking-tight text-xs sm:text-sm text-black shrink-0">SignFlow</span>
-          <span className="text-neutral-300 shrink-0">|</span>
-          <span className="text-[11px] sm:text-xs text-neutral-700 font-medium truncate max-w-[90px] xs:max-w-[130px] sm:max-w-xs">
+          <span className="text-neutral-300 shrink-0" aria-hidden="true">|</span>
+          <span className="text-[11px] sm:text-xs text-neutral-700 font-medium truncate max-w-[100px] xs:max-w-[130px] sm:max-w-xs" title={contract.title}>
             {contract.title}
           </span>
+          {signatureDataUrl && (
+            <span className="hidden sm:inline-flex items-center space-x-1 px-1.5 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-mono font-bold tracking-wider uppercase shrink-0">
+              <CheckIcon className="w-3 h-3 text-black" />
+              <span>SIGNED</span>
+            </span>
+          )}
         </div>
 
         {/* Legal Signer Name Input Bar */}
