@@ -25,7 +25,7 @@ export function AuditTimeline({ logs }: AuditTimelineProps) {
   }
 
   return (
-    <div className="relative border-l border-neutral-300 ml-3 pl-4 space-y-6">
+    <div className="relative border-l border-neutral-300 ml-3 pl-4 space-y-6 pb-2">
       {logs.map((log) => (
         <div key={log.id} className="relative min-w-0">
           {/* Timeline node */}

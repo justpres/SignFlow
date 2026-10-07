@@ -345,11 +345,16 @@ export default function ContractDetailPage() {
 
         {/* Right Column: Evidence & Audit Log */}
         <div className="lg:col-span-1 min-w-0">
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle>Audit Trail</CardTitle>
+          <Card className="flex flex-col">
+            <CardHeader className="flex flex-row items-center justify-between mb-4 pb-3">
+              <CardTitle className="text-lg">Audit Trail</CardTitle>
+              <span className="text-[11px] font-mono font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 border border-neutral-200">
+                {auditLogs.length} {auditLogs.length === 1 ? 'event' : 'events'}
+              </span>
             </CardHeader>
-            <AuditTimeline logs={auditLogs} />
+            <div className="max-h-[480px] lg:max-h-[520px] overflow-y-auto pr-2 space-y-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-neutral-300 hover:[&::-webkit-scrollbar-thumb]:bg-neutral-400">
+              <AuditTimeline logs={auditLogs} />
+            </div>
           </Card>
         </div>
       </div>
