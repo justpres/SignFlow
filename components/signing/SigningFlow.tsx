@@ -47,7 +47,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
   const [contract, setContract] = useState<ContractData | null>(null);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState<boolean>(true);
-  const [fetchError, setFetchError] = useState<'EXPIRED' | 'REVOKED' | 'ALREADY_SIGNED' | 'NOT_FOUND' | 'ERROR' | null>(null);
+  const [fetchError, setFetchError] = useState<'EXPIRED' | 'REVOKED' | 'ALREADY_SIGNED' | 'NOT_FOUND' | 'ERROR' | 'WAITING_COUNTER_SIGN' | null>(null);
 
   // Form inputs
   const [signerName, setSignerName] = useState<string>('');
@@ -106,9 +106,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
         setFetchError('REVOKED');
         return;
       }
-      if (data.contract.status === 'SIGNED') {
+      if (data.contract.status === 'SIGNED' || data.contract.status === 'WAITING_COUNTER_SIGN') {
         setContract(data.contract);
-        setFetchError('ALREADY_SIGNED');
+        setFetchError(data.contract.status === 'WAITING_COUNTER_SIGN' ? 'WAITING_COUNTER_SIGN' : 'ALREADY_SIGNED');
         return;
       }
 
@@ -225,7 +225,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
         return;
       }
 
-      if (data.status === 'WAITING_COUNTER_SIGN') {
+      if (data.status === 'WAITING_COUNTER_SIGN' || data.isWaitingCounterSign) {
         setIsWaitingCounterSign(true);
       }
 

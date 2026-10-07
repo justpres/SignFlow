@@ -135,13 +135,13 @@ export async function POST(request: Request) {
     const rawSigningToken = generateSigningToken();
     const signingTokenHash = hashSigningToken(rawSigningToken);
 
-    const signaturePage = formData.get('signaturePage') ? Number(formData.get('signaturePage')) : undefined;
-    const signatureX = formData.get('signatureX') ? Number(formData.get('signatureX')) : undefined;
-    const signatureY = formData.get('signatureY') ? Number(formData.get('signatureY')) : undefined;
-    const nameX = formData.get('nameX') ? Number(formData.get('nameX')) : undefined;
-    const nameY = formData.get('nameY') ? Number(formData.get('nameY')) : undefined;
-    const dateX = formData.get('dateX') ? Number(formData.get('dateX')) : undefined;
-    const dateY = formData.get('dateY') ? Number(formData.get('dateY')) : undefined;
+    const signaturePage = formData.get('signaturePage') ? Number(formData.get('signaturePage')) : existingContract?.signaturePage;
+    const signatureX = formData.get('signatureX') ? Number(formData.get('signatureX')) : existingContract?.signatureX;
+    const signatureY = formData.get('signatureY') ? Number(formData.get('signatureY')) : existingContract?.signatureY;
+    const nameX = formData.get('nameX') ? Number(formData.get('nameX')) : existingContract?.nameX;
+    const nameY = formData.get('nameY') ? Number(formData.get('nameY')) : existingContract?.nameY;
+    const dateX = formData.get('dateX') ? Number(formData.get('dateX')) : existingContract?.dateX;
+    const dateY = formData.get('dateY') ? Number(formData.get('dateY')) : existingContract?.dateY;
 
     const contractToSend: Contract = {
       id: contractId,
@@ -163,9 +163,9 @@ export async function POST(request: Request) {
       nameY,
       dateX,
       dateY,
-      fields: fields.length > 0 ? fields : undefined,
-      requiresCounterSign,
-      templateId,
+      fields: fields.length > 0 ? fields : existingContract?.fields,
+      requiresCounterSign: formData.has('requiresCounterSign') ? requiresCounterSign : (existingContract?.requiresCounterSign ?? false),
+      templateId: templateId || existingContract?.templateId,
     };
 
     await saveContract(contractToSend);

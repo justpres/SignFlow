@@ -145,6 +145,7 @@ export async function POST(request: Request) {
     contract.signedPdfBase64 = signedPdfBuffer.toString('base64');
     contract.signatureMethod = signatureMethod || 'DRAW';
     contract.signatureImagePath = signatureDataUrl;
+    if (initialsDataUrl) contract.initialsImagePath = initialsDataUrl;
     contract.confirmationAccepted = true;
     if (activeFields) contract.fields = activeFields;
     if (finalPage !== undefined) contract.signaturePage = finalPage;
@@ -212,6 +213,8 @@ export async function POST(request: Request) {
       contractTitle: contract.title,
       clientName: contract.clientName,
       signedAt: contract.signedAt,
+      status: contract.status,
+      isWaitingCounterSign: isTwoPartyCounterSign,
       downloadUrl: `/api/contracts/${contract.id}/download?type=signed&token=${tokenHash}`,
     });
   } catch (error) {

@@ -96,6 +96,8 @@ export async function generateSignedPdf({
     ? signaturePage - 1
     : totalPages - 1;
 
+  const hasSignatureField = Boolean(fields && fields.some((f) => f.type === 'SIGNATURE'));
+
   if (fields && fields.length > 0) {
     for (const field of fields) {
       const pIndex = Math.max(0, Math.min(totalPages - 1, (field.page || 1) - 1));
@@ -152,7 +154,10 @@ export async function generateSignedPdf({
         }
       }
     }
-  } else {
+  }
+
+  // If no explicit SIGNATURE field was in fields, always stamp primary signature directly
+  if (!hasSignatureField) {
     const page = pdfDoc.getPage(targetPageIndex);
 
     // Position directly over standard signature line (_____):
@@ -182,15 +187,16 @@ export async function generateSignedPdf({
       const counterBytes = Buffer.from(cleanCounter, 'base64');
       const counterImage = await pdfDoc.embedPng(counterBytes);
 
+      const firstSigField = fields?.find((f) => f.type === 'SIGNATURE');
       const csTargetPageIndex = counterSignPlacement?.page && counterSignPlacement.page <= totalPages
         ? counterSignPlacement.page - 1
-        : targetPageIndex;
+        : (firstSigField ? Math.max(0, Math.min(totalPages - 1, firstSigField.page - 1)) : targetPageIndex);
       const csPage = pdfDoc.getPage(csTargetPageIndex);
 
       const csX = counterSignPlacement?.signatureX !== undefined ? counterSignPlacement.signatureX : 340;
       const csY = counterSignPlacement?.signatureY !== undefined
         ? counterSignPlacement.signatureY
-        : (signatureY !== undefined ? signatureY : 115);
+        : (firstSigField ? firstSigField.y : (signatureY !== undefined ? signatureY : 115));
       const csWidth = 170;
       const csHeight = 50;
       const csDims = counterImage.scaleToFit(csWidth, csHeight);

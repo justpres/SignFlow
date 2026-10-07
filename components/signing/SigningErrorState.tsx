@@ -1,15 +1,21 @@
 import React from 'react';
-import { WarningIcon, LockIcon } from '@/components/ui/Icons';
+import { WarningIcon, LockIcon, CheckIcon } from '@/components/ui/Icons';
 import { Button } from '@/components/ui/Button';
 
 interface SigningErrorStateProps {
-  type: 'EXPIRED' | 'REVOKED' | 'ALREADY_SIGNED' | 'NOT_FOUND' | 'ERROR';
+  type: 'EXPIRED' | 'REVOKED' | 'ALREADY_SIGNED' | 'NOT_FOUND' | 'ERROR' | 'WAITING_COUNTER_SIGN';
   signedAt?: string;
   onRefresh?: () => void;
 }
 
 export function SigningErrorState({ type, signedAt, onRefresh }: SigningErrorStateProps) {
   const configs = {
+    WAITING_COUNTER_SIGN: {
+      title: 'SIGNATURE SUBMITTED',
+      description: 'Your signature has been recorded. This agreement is now awaiting sender counter-signature.',
+      hint: signedAt ? `Submitted on ${new Date(signedAt).toLocaleString()}` : 'You will receive the final sealed document once completed.',
+      icon: <CheckIcon className="w-8 h-8 text-black" />,
+    },
     EXPIRED: {
       title: 'SIGNING LINK EXPIRED',
       description: 'This signing request has passed its expiration date and is no longer available.',

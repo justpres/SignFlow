@@ -223,6 +223,17 @@ export default function ContractDetailPage() {
               </a>
             )}
 
+            {contract.status === 'WAITING_COUNTER_SIGN' && contract.signedFilePath && (
+              <a
+                href={`/api/contracts/${contract.id}/download?type=signed`}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs border border-neutral-300 hover:border-black font-medium text-black focus-visible:outline-black"
+                title="Review document with client signature before counter-signing"
+              >
+                <DownloadIcon className="w-3.5 h-3.5" />
+                Preview Client Signature PDF
+              </a>
+            )}
+
             {contract.status !== 'SIGNED' && contract.status !== 'REVOKED' && contract.status !== 'EXPIRED' && (
               <Button variant="outline" size="sm" onClick={() => setShowRevokeModal(true)}>
                 Cancel Signing Request

@@ -49,6 +49,7 @@ export interface Contract {
   revokedAt?: string;
   signatureMethod?: SignatureMethod;
   signatureImagePath?: string;
+  initialsImagePath?: string;
   contractVersion: number;
   confirmationAccepted?: boolean;
   finalizedAt?: string;

@@ -91,6 +91,7 @@ export async function POST(
       signatureY: contract.signatureY,
       attachCertificate: false,
       fields: contract.fields,
+      initialsPngBase64: contract.initialsImagePath,
       counterSignaturePngBase64: counterSignatureDataUrl,
       counterSignerName: adminSignerName,
       counterSignedAtDate: nowIso,

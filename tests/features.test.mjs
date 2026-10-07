@@ -194,3 +194,106 @@ test('Draft Contracts: saves draft without active token, updates and deletes dra
   const deleted = await getContractById(draftId);
   assert.strictEqual(deleted, null);
 });
+
+test('Multi-Field Stamping Fallback: stamps signature even when fields has no SIGNATURE field', async () => {
+  const originalPdfBuffer = await createTestPdf();
+
+  // Only date and text, no signature field
+  const nonSigFields = [
+    {
+      id: 'f-date-only',
+      type: 'DATE',
+      page: 1,
+      x: 100,
+      y: 200,
+      width: 100,
+      height: 30,
+      value: '2026-10-07',
+    },
+    {
+      id: 'f-text-only',
+      type: 'TEXT',
+      page: 1,
+      x: 100,
+      y: 150,
+      width: 150,
+      height: 30,
+      value: 'Chief Executive Officer',
+    },
+  ];
+
+  const signedBuffer = await generateSignedPdf({
+    originalPdfBuffer,
+    clientName: 'Sarah Connor',
+    signaturePngBase64: SAMPLE_PNG_BASE64,
+    contractId: 'cnt_fallback_sig',
+    signedAtDate: '2026-10-07T12:00:00Z',
+    signaturePage: 1,
+    signatureX: 80,
+    signatureY: 100,
+    fields: nonSigFields,
+  });
+
+  assert.ok(signedBuffer instanceof Buffer);
+  const pdfDoc = await PDFDocument.load(signedBuffer);
+  assert.strictEqual(pdfDoc.getPageCount(), 1);
+});
+
+test('Two-Party Agreement Lifecycle: draft to WAITING_COUNTER_SIGN to SIGNED with initials preservation', async () => {
+  const contractId = `cnt_twoparty_${Date.now()}`;
+  const contract = {
+    id: contractId,
+    title: 'Two-Party Executive Retainer',
+    clientName: 'Elena Rostova',
+    clientEmail: 'elena@rostova.com',
+    status: 'DRAFT',
+    originalFilePath: 'contracts/test/original.pdf',
+    signingTokenHash: 'mock-hash-12345',
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000 * 14).toISOString(),
+    contractVersion: 1,
+    requiresCounterSign: true,
+    fields: [
+      { id: 'f-sig', type: 'SIGNATURE', page: 1, x: 70, y: 120, width: 170, height: 50 },
+      { id: 'f-ini', type: 'INITIALS', page: 1, x: 260, y: 120, width: 80, height: 40, value: 'ER' },
+    ],
+  };
+
+  await saveContract(contract);
+
+  // Transition from DRAFT to SENT
+  contract.status = 'SENT';
+  await saveContract(contract);
+  const sentContract = await getContractById(contractId);
+  assert.strictEqual(sentContract?.status, 'SENT');
+  assert.strictEqual(sentContract?.requiresCounterSign, true);
+  assert.strictEqual(sentContract?.fields?.length, 2);
+
+  // Client signs -> status transitions to WAITING_COUNTER_SIGN
+  sentContract.status = 'WAITING_COUNTER_SIGN';
+  sentContract.signedAt = new Date().toISOString();
+  sentContract.signatureImagePath = SAMPLE_PNG_BASE64;
+  sentContract.initialsImagePath = SAMPLE_PNG_BASE64;
+  await saveContract(sentContract);
+
+  const waitingContract = await getContractById(contractId);
+  assert.strictEqual(waitingContract?.status, 'WAITING_COUNTER_SIGN');
+  assert.strictEqual(waitingContract?.initialsImagePath, SAMPLE_PNG_BASE64);
+
+  // Admin counter-signs -> status transitions to SIGNED
+  waitingContract.status = 'SIGNED';
+  waitingContract.counterSignedAt = new Date().toISOString();
+  waitingContract.counterSignerName = 'Admin Counsel';
+  waitingContract.counterSignatureDataUrl = SAMPLE_PNG_BASE64;
+  await saveContract(waitingContract);
+
+  const sealedContract = await getContractById(contractId);
+  assert.strictEqual(sealedContract?.status, 'SIGNED');
+  assert.strictEqual(sealedContract?.counterSignerName, 'Admin Counsel');
+  assert.ok(sealedContract?.counterSignedAt);
+
+  // Clean up test contract
+  await deleteContract(contractId);
+  assert.strictEqual(await getContractById(contractId), null);
+});
+

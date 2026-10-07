@@ -141,9 +141,14 @@ function NewContractForm() {
 
   // Save current PDF as reusable template
   const handleSaveAsTemplate = async () => {
-    if (!title || !fileBase64) {
-      setError('Please provide a title and PDF document to save as a template.');
+    if (!fileBase64) {
+      setError('Please upload a PDF document first before saving as a template.');
       return;
+    }
+
+    const templateTitle = title.trim() || (file ? file.name.replace(/\.pdf$/i, '') : 'Contract Template');
+    if (!title.trim()) {
+      setTitle(templateTitle);
     }
 
     setIsSavingTemplate(true);
@@ -153,9 +158,9 @@ function NewContractForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title,
+          title: templateTitle,
           pdfBase64: fileBase64,
-          fileName: file?.name || `${title}.pdf`,
+          fileName: file?.name || `${templateTitle}.pdf`,
           fields,
           signaturePage: signaturePage ? Number(signaturePage) : undefined,
           signatureX: signatureX ? Number(signatureX) : undefined,
