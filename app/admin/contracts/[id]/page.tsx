@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { DownloadIcon, WarningIcon } from '@/components/ui/Icons';
 import { SignaturePad } from '@/components/signature/SignaturePad';
 import { TypedSignature } from '@/components/signature/TypedSignature';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export default function ContractDetailPage() {
   const params = useParams();
@@ -280,12 +281,24 @@ export default function ContractDetailPage() {
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
                 <dt className="text-neutral-500 font-medium">Signer Full Name</dt>
-                <dd className="text-black font-bold text-sm mt-0.5">{contract.clientName || 'Not set'}</dd>
+                <dd className="text-black font-bold text-sm mt-0.5 flex items-center gap-2">
+                  <UserAvatar name={contract.clientName} email={contract.clientEmail} size="xs" />
+                  <span>{contract.clientName || 'Not set'}</span>
+                </dd>
               </div>
               <div>
                 <dt className="text-neutral-500 font-medium">Signer Email</dt>
                 <dd className="text-black font-medium text-sm mt-0.5">{contract.clientEmail || 'Not set'}</dd>
               </div>
+              {contract.ownerEmail && (
+                <div>
+                  <dt className="text-neutral-500 font-medium">Contract Creator</dt>
+                  <dd className="text-black font-medium text-sm mt-0.5 flex items-center gap-2">
+                    <UserAvatar name={contract.ownerName} email={contract.ownerEmail} size="xs" />
+                    <span>{contract.ownerName || contract.ownerEmail}</span>
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-neutral-500 font-medium">Created Date</dt>
                 <dd className="text-black font-mono mt-0.5">

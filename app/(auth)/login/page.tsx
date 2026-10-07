@@ -31,24 +31,27 @@ function GoogleIcon({ className = 'w-5 h-5' }: { className?: string }) {
   );
 }
 
+import { getDiceBearAvatar } from '@/lib/avatar';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+
 const DEMO_GOOGLE_USERS = [
   {
     name: 'Alice Smith',
     email: 'alice@example.com',
     role: 'Startup Founder',
-    photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80',
+    photoUrl: getDiceBearAvatar('alice@example.com', 'notionists'),
   },
   {
     name: 'Bob Johnson',
     email: 'bob@example.com',
     role: 'Legal Counsel',
-    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
+    photoUrl: getDiceBearAvatar('bob@example.com', 'notionists'),
   },
   {
     name: 'Carol Danvers',
     email: 'carol@example.com',
     role: 'Enterprise Sales',
-    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+    photoUrl: getDiceBearAvatar('carol@example.com', 'notionists'),
   },
 ];
 
@@ -304,11 +307,11 @@ export default function LoginPage() {
                 className="w-full p-3 border border-neutral-200 hover:border-black bg-white hover:bg-neutral-50 flex items-center justify-between text-left transition-colors cursor-pointer group"
               >
                 <div className="flex items-center space-x-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={user.photoUrl}
-                    alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover border border-neutral-300"
+                  <UserAvatar
+                    name={user.name}
+                    email={user.email}
+                    photoUrl={user.photoUrl}
+                    size="lg"
                   />
                   <div>
                     <div className="text-xs font-bold text-black group-hover:underline">{user.name}</div>

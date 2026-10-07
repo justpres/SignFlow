@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 interface SessionUser {
   userId?: string;
@@ -41,7 +42,6 @@ export function AdminHeader() {
 
   const displayName = user?.name || (user?.email ? user.email.split('@')[0] : 'Admin');
   const displayEmail = user?.email || '';
-  const initial = (displayName || 'U').charAt(0).toUpperCase();
 
   return (
     <header className="border-b border-neutral-200 bg-white sticky top-0 z-40">
@@ -78,21 +78,12 @@ export function AdminHeader() {
                   {displayEmail}
                 </span>
               </div>
-              {user.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.photoUrl}
-                  alt={displayName}
-                  className="w-8 h-8 rounded-full border border-neutral-300 object-cover"
-                />
-              ) : (
-                <div
-                  className="w-8 h-8 rounded-full bg-black text-white text-xs font-bold font-mono flex items-center justify-center shrink-0 border border-black"
-                  aria-label={displayName}
-                >
-                  {initial}
-                </div>
-              )}
+              <UserAvatar
+                name={displayName}
+                email={displayEmail}
+                photoUrl={user.photoUrl}
+                size="md"
+              />
             </div>
           )}
 

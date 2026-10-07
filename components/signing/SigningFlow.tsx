@@ -7,6 +7,7 @@ import { SigningSuccess } from '@/components/signing/SigningSuccess';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { LockIcon, WarningIcon, CheckIcon } from '@/components/ui/Icons';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { PlacedField } from '@/lib/types';
 
 interface ContractData {
@@ -387,10 +388,13 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
       {/* Sender Identity Subheader on smaller screens */}
       {(contract.ownerName || contract.ownerEmail) && (
-        <div className="lg:hidden flex-shrink-0 bg-neutral-50 border-b border-neutral-200 px-3 py-1 text-[11px] text-neutral-600 flex items-center justify-between">
-          <span>Contract sent by: <strong className="text-black">{contract.ownerName || contract.ownerEmail}</strong></span>
+        <div className="lg:hidden flex-shrink-0 bg-neutral-50 border-b border-neutral-200 px-3 py-1.5 text-[11px] text-neutral-600 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <UserAvatar name={contract.ownerName} email={contract.ownerEmail} size="xs" />
+            <span className="truncate">Contract sent by: <strong className="text-black">{contract.ownerName || contract.ownerEmail}</strong></span>
+          </div>
           {contract.ownerEmail && (
-            <span className="text-[10px] text-neutral-400 font-mono truncate max-w-[130px]">{contract.ownerEmail}</span>
+            <span className="text-[10px] text-neutral-400 font-mono truncate max-w-[130px] ml-2 shrink-0">{contract.ownerEmail}</span>
           )}
         </div>
       )}
@@ -438,12 +442,15 @@ export function SigningFlow({ token }: SigningFlowProps) {
         <div className="space-y-3.5 text-black text-xs font-sans">
           {/* Sender Identity Info */}
           {(contract.ownerName || contract.ownerEmail) && (
-            <div className="p-2.5 bg-neutral-50 border border-neutral-200 text-[11px] text-neutral-700">
-              <span className="text-neutral-500">Contract sent by: </span>
-              <strong className="text-black font-semibold">{contract.ownerName || contract.ownerEmail}</strong>
-              {contract.ownerEmail && contract.ownerName && (
-                <span className="text-neutral-400 font-mono text-[10px] ml-1">({contract.ownerEmail})</span>
-              )}
+            <div className="p-2.5 bg-neutral-50 border border-neutral-200 text-[11px] text-neutral-700 flex items-center gap-2.5">
+              <UserAvatar name={contract.ownerName} email={contract.ownerEmail} size="xs" />
+              <div>
+                <span className="text-neutral-500">Contract sent by: </span>
+                <strong className="text-black font-semibold">{contract.ownerName || contract.ownerEmail}</strong>
+                {contract.ownerEmail && contract.ownerName && (
+                  <span className="text-neutral-400 font-mono text-[10px] ml-1">({contract.ownerEmail})</span>
+                )}
+              </div>
             </div>
           )}
 

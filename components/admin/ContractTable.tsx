@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Contract } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DownloadIcon } from '@/components/ui/Icons';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 interface ContractTableProps {
   contracts: Contract[];
@@ -45,11 +46,20 @@ export function ContractTable({ contracts, onCopyLink: _onCopyLink, onRevoke, on
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <div className="text-neutral-900 font-medium">
-                    {contract.clientName || <span className="text-neutral-400 italic">Not set</span>}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {contract.clientEmail || (contract.status === 'DRAFT' ? <span className="text-neutral-400 italic">Draft</span> : '')}
+                  <div className="flex items-center gap-2.5">
+                    <UserAvatar
+                      name={contract.clientName}
+                      email={contract.clientEmail}
+                      size="sm"
+                    />
+                    <div>
+                      <div className="text-neutral-900 font-medium">
+                        {contract.clientName || <span className="text-neutral-400 italic">Not set</span>}
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        {contract.clientEmail || (contract.status === 'DRAFT' ? <span className="text-neutral-400 italic">Draft</span> : '')}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="px-6 py-4">
@@ -165,8 +175,15 @@ export function ContractTable({ contracts, onCopyLink: _onCopyLink, onRevoke, on
               <StatusBadge status={contract.status} />
             </div>
 
-            <div className="text-xs text-neutral-700">
-              <span className="font-semibold">Client:</span> {contract.clientName || 'Not set'} {contract.clientEmail ? `(${contract.clientEmail})` : ''}
+            <div className="text-xs text-neutral-700 flex items-center gap-2 pt-1 border-t border-neutral-100">
+              <UserAvatar
+                name={contract.clientName}
+                email={contract.clientEmail}
+                size="xs"
+              />
+              <div className="min-w-0 truncate">
+                <span className="font-semibold">Client:</span> {contract.clientName || 'Not set'} {contract.clientEmail ? `(${contract.clientEmail})` : ''}
+              </div>
             </div>
 
             <div className="flex justify-between text-xs text-neutral-500">

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminApp } from '@/lib/firebase/admin';
 import { saveUser, getUserByEmail } from '@/lib/firebase/service';
 import { createUserSession } from '@/lib/auth/session';
+import { getDiceBearAvatar } from '@/lib/avatar';
 import type { User } from '@/lib/types';
 
 export async function POST(request: Request) {
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       : verifiedUid || `usr_${Buffer.from(verifiedEmail).toString('hex').slice(0, 12)}`;
 
     const displayName = verifiedName || existingUser?.name || verifiedEmail.split('@')[0];
-    const avatarUrl = verifiedPhoto || existingUser?.photoUrl;
+    const avatarUrl = verifiedPhoto || existingUser?.photoUrl || getDiceBearAvatar(verifiedEmail, 'notionists');
 
     const user: User = {
       id: userId,

@@ -13,6 +13,7 @@ import {
   getAllTemplates,
   deleteTemplate,
 } from '../lib/firebase/service.ts';
+import { getDiceBearAvatar } from '../lib/avatar.ts';
 
 test('SaaS Multi-Tenant: User creation, retrieval, and updating', async () => {
   const timestamp = Date.now();
@@ -309,6 +310,18 @@ test('SaaS Multi-Tenant: Query fallback, deduplication, and email matching for c
   await deleteContract(c2.id);
   await deleteContract(c3.id);
   await deleteContract(cBob.id);
+});
+
+test('DiceBear Avatars: Deterministic profile icons generation', async () => {
+  const aliceAvatar1 = getDiceBearAvatar('alice@example.com', 'notionists');
+  const aliceAvatar2 = getDiceBearAvatar('alice@example.com', 'notionists');
+  const bobAvatar = getDiceBearAvatar('bob@example.com', 'notionists');
+  const initialsAvatar = getDiceBearAvatar('Charlie Brown', 'initials');
+
+  assert.ok(aliceAvatar1.startsWith('data:image/svg+xml;utf8,'), 'Must be SVG Data URI');
+  assert.equal(aliceAvatar1, aliceAvatar2, 'Same seed must generate identical deterministic avatar');
+  assert.notEqual(aliceAvatar1, bobAvatar, 'Different seeds must generate distinct avatars');
+  assert.ok(initialsAvatar.startsWith('data:image/svg+xml;utf8,'), 'Initials avatar must be SVG Data URI');
 });
 
 
