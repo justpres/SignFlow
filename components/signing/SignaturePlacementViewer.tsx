@@ -3,88 +3,87 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/ui/Icons';
 import { Button } from '@/components/ui/Button';
-import { SignaturePlacement, PlacedField } from '@/lib/types';
+import { PlacedField, SignaturePlacement } from '@/lib/types';
 
-interface SignaturePlacementViewerProps {
+export interface SignaturePlacementViewerProps {
   pdfBase64: string;
-  signatureDataUrl: string;
+  fields: PlacedField[];
+  onFieldsChange: (fields: PlacedField[]) => void;
   signerName: string;
-  placement: SignaturePlacement;
-  onPlacementChange: (placement: SignaturePlacement) => void;
+  onSignerNameChange?: (name: string) => void;
+  signatureDataUrl?: string | null;
+  onSignatureChange?: (dataUrl: string | null) => void;
+  initialsDataUrl?: string | null;
+  onInitialsChange?: (dataUrl: string | null) => void;
+  signatureMethod?: 'DRAW' | 'TYPE';
+  onSignatureMethodChange?: (method: 'DRAW' | 'TYPE') => void;
   defaultPlacementPage?: number;
-  fields?: PlacedField[];
-  initialsDataUrl?: string;
+  placement?: SignaturePlacement;
+  onPlacementChange?: (placement: SignaturePlacement) => void;
 }
-
-const SIG_BOX_WIDTH_PT = 170;
-const SIG_BOX_HEIGHT_PT = 50;
 
 export function SignaturePlacementViewer({
   pdfBase64,
+  fields,
+  onFieldsChange,
+  signerName,
+  onSignerNameChange,
   signatureDataUrl,
-  signerName: _signerName,
+  onSignatureChange,
+  initialsDataUrl,
+  onInitialsChange,
+  signatureMethod = 'DRAW',
+  onSignatureMethodChange,
+  defaultPlacementPage,
   placement,
   onPlacementChange,
-  defaultPlacementPage,
-  fields,
-  initialsDataUrl,
 }: SignaturePlacementViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageContainerRef = useRef<HTMLDivElement | null>(null);
-  const badgeRef = useRef<HTMLDivElement | null>(null);
+  const trayCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [numPages, setNumPages] = useState<number>(1);
-  const [currentPage, setCurrentPage] = useState<number>(placement.page || 1);
+  const [currentPage, setCurrentPage] = useState<number>(defaultPlacementPage || placement?.page || 1);
   const [scale, setScale] = useState<number>(1.1);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [focusedFieldIndex, setFocusedFieldIndex] = useState<number>(0);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number }>({
     width: 612,
     height: 792,
   });
 
-  const handleNextField = () => {
-    if (!fields || fields.length === 0) return;
-    const nextIdx = (focusedFieldIndex + 1) % fields.length;
-    setFocusedFieldIndex(nextIdx);
-    const target = fields[nextIdx];
-    if (target.page !== currentPage) {
-      setCurrentPage(target.page);
-    }
-  };
+  // Active in-situ tray/popover state
+  const [activeTrayField, setActiveTrayField] = useState<PlacedField | null>(null);
+  const [trayMethod, setTrayMethod] = useState<'DRAW' | 'TYPE'>(signatureMethod);
+  const [traySignerName, setTraySignerName] = useState<string>(signerName);
+  const [trayInitials, setTrayInitials] = useState<string>('');
+  const [trayTextInput, setTrayTextInput] = useState<string>('');
+  const [hasDrawnStroke, setHasDrawnStroke] = useState<boolean>(false);
+  const [isDrawingTray, setIsDrawingTray] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
 
+  const isDrawingRef = useRef<boolean>(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfDocRef = useRef<any>(null);
-  const dragStartRef = useRef<{
-    pointerX: number;
-    pointerY: number;
-    initialSigX: number;
-    initialSigY: number;
-  }>({ pointerX: 0, pointerY: 0, initialSigX: 0, initialSigY: 0 });
-  const didDragRef = useRef<boolean>(false);
-  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
-  // Clamp helper ensuring signature box stays strictly within page bounds
-  const clampPlacement = useCallback((targetX: number, targetY: number, pageNum: number): SignaturePlacement => {
-    const minTopMarginPt = Math.ceil(32 / scale);
-    const maxSigY = Math.round(pageDimensions.height - SIG_BOX_HEIGHT_PT - minTopMarginPt);
-
-    const clampedX = Math.max(10, Math.min(targetX, Math.round(pageDimensions.width - SIG_BOX_WIDTH_PT - 10)));
-    const clampedY = Math.max(40, Math.min(targetY, Math.max(40, maxSigY)));
-
-    return {
-      page: pageNum,
-      signatureX: clampedX,
-      signatureY: clampedY,
-      nameX: clampedX,
-      nameY: Math.max(clampedY - 18, 20),
-      dateX: clampedX,
-      dateY: Math.max(clampedY - 30, 10),
+  // Responsive mobile viewport tracking
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
     };
-  }, [pageDimensions.height, pageDimensions.width, scale]);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Sync signerName into tray if changed from outside
+  useEffect(() => {
+    if (signerName) {
+      setTraySignerName(signerName);
+    }
+  }, [signerName]);
 
   // Load PDF Document
   useEffect(() => {
@@ -108,29 +107,25 @@ export function SignaturePlacementViewer({
         pdfDocRef.current = doc;
         setNumPages(doc.numPages);
 
-        // Determine target starting page:
-        // Priority 1: Admin pre-configured defaultPlacementPage
-        // Priority 2: Pre-selected placement page (if explicit admin choice was provided)
-        // Priority 3: Last page (doc.numPages) where signature blanks typically reside
-        let targetPage = doc.numPages;
-        if (defaultPlacementPage && defaultPlacementPage > 0 && defaultPlacementPage <= doc.numPages) {
+        // Determine starting page: first signature field page, or defaultPlacementPage, or last page
+        let targetPage = 1;
+        const firstSigField = fields.find((f) => f.type === 'SIGNATURE');
+        if (firstSigField && firstSigField.page > 0 && firstSigField.page <= doc.numPages) {
+          targetPage = firstSigField.page;
+        } else if (defaultPlacementPage && defaultPlacementPage > 0 && defaultPlacementPage <= doc.numPages) {
           targetPage = defaultPlacementPage;
-        } else if (placement.page && placement.page > 0 && placement.page <= doc.numPages && defaultPlacementPage !== undefined) {
+        } else if (placement?.page && placement.page > 0 && placement.page <= doc.numPages) {
           targetPage = placement.page;
+        } else {
+          targetPage = doc.numPages;
         }
 
         setCurrentPage(targetPage);
-        if (placement.page !== targetPage) {
-          onPlacementChange({
-            ...placement,
-            page: targetPage,
-          });
-        }
         setIsLoading(false);
       } catch (err: unknown) {
         if (isCancelled) return;
         console.error('PDF load error:', err);
-        setError('Failed to load document for signature placement.');
+        setError('Failed to load document preview.');
         setIsLoading(false);
       }
     }
@@ -144,7 +139,7 @@ export function SignaturePlacementViewer({
     };
   }, [pdfBase64, defaultPlacementPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Render current page onto canvas with concurrent task cancellation protection
+  // Render current PDF page
   useEffect(() => {
     let isCancelled = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -158,9 +153,7 @@ export function SignaturePlacementViewer({
         if (isCancelled) return;
 
         const unscaledViewport = page.getViewport({ scale: 1.0 });
-        const pdfW = unscaledViewport.width;
-        const pdfH = unscaledViewport.height;
-        setPageDimensions({ width: pdfW, height: pdfH });
+        setPageDimensions({ width: unscaledViewport.width, height: unscaledViewport.height });
 
         const viewport = page.getViewport({ scale });
         const canvas = canvasRef.current;
@@ -178,7 +171,7 @@ export function SignaturePlacementViewer({
         currentRenderTask = page.render(renderContext);
         await currentRenderTask.promise;
       } catch (e: unknown) {
-        // Suppress benign RenderingCancelledException when page/zoom switches
+        // Suppress benign RenderingCancelledException
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!isCancelled && (e as any)?.name !== 'RenderingCancelledException') {
           console.error('Page render error:', e);
@@ -196,156 +189,283 @@ export function SignaturePlacementViewer({
     };
   }, [currentPage, scale]);
 
-  const scaleFactor = scale;
+  // Setup drawing tray canvas
+  const setupTrayCanvas = useCallback(() => {
+    const canvas = trayCanvasRef.current;
+    if (!canvas) return;
 
-  // Exact screen dimensions & coordinates for the 170x50pt signature box:
-  const sigBoxWidthPx = SIG_BOX_WIDTH_PT * scaleFactor;
-  const sigBoxHeightPx = SIG_BOX_HEIGHT_PT * scaleFactor;
-  const sigBoxLeftPx = placement.signatureX * scaleFactor;
-  const sigBoxTopPx = (pageDimensions.height - (placement.signatureY + SIG_BOX_HEIGHT_PT)) * scaleFactor;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
 
-  // Handle Drag Pointer Events (Mouse & Touch)
-  const handlePointerDown = (clientX: number, clientY: number, e: React.SyntheticEvent) => {
-    e.stopPropagation();
-    dragStartRef.current = {
-      pointerX: clientX,
-      pointerY: clientY,
-      initialSigX: placement.signatureX,
-      initialSigY: placement.signatureY,
-    };
-    didDragRef.current = false;
-    setIsDragging(true);
+    canvas.width = (rect.width || 360) * dpr;
+    canvas.height = (rect.height || 160) * dpr;
 
-    const onPointerMove = (moveEvent: MouseEvent | TouchEvent) => {
-      // Prevent mobile page scroll/pan during signature dragging
-      if ('cancelable' in moveEvent && moveEvent.cancelable) {
-        moveEvent.preventDefault();
-      }
-
-      const curX = 'touches' in moveEvent ? moveEvent.touches[0]?.clientX : moveEvent.clientX;
-      const curY = 'touches' in moveEvent ? moveEvent.touches[0]?.clientY : moveEvent.clientY;
-      if (curX === undefined || curY === undefined) return;
-
-      const deltaScreenX = curX - dragStartRef.current.pointerX;
-      const deltaScreenY = curY - dragStartRef.current.pointerY;
-
-      if (Math.abs(deltaScreenX) > 3 || Math.abs(deltaScreenY) > 3) {
-        didDragRef.current = true;
-      }
-
-      // Convert screen delta to PDF points (Y=0 is bottom in PDF)
-      const deltaPdfX = deltaScreenX / scaleFactor;
-      const deltaPdfY = -(deltaScreenY / scaleFactor);
-
-      const targetSigX = Math.round(dragStartRef.current.initialSigX + deltaPdfX);
-      const targetSigY = Math.round(dragStartRef.current.initialSigY + deltaPdfY);
-
-      onPlacementChange(clampPlacement(targetSigX, targetSigY, currentPage));
-    };
-
-    const onPointerUp = () => {
-      window.removeEventListener('mousemove', onPointerMove);
-      window.removeEventListener('mouseup', onPointerUp);
-      window.removeEventListener('touchmove', onPointerMove);
-      window.removeEventListener('touchend', onPointerUp);
-      window.removeEventListener('touchcancel', onPointerUp);
-      setIsDragging(false);
-
-      setTimeout(() => {
-        didDragRef.current = false;
-      }, 100);
-    };
-
-    window.addEventListener('mousemove', onPointerMove);
-    window.addEventListener('mouseup', onPointerUp);
-    window.addEventListener('touchmove', onPointerMove, { passive: false });
-    window.addEventListener('touchend', onPointerUp);
-    window.addEventListener('touchcancel', onPointerUp);
-  };
-
-  // Tap or Click anywhere on page to place
-  const handlePageClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (didDragRef.current || !pageContainerRef.current) return;
-
-    const rect = pageContainerRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    // Center signature box over clicked point
-    const targetLeftPx = clickX - sigBoxWidthPx / 2;
-    const targetTopPx = clickY - sigBoxHeightPx / 2;
-
-    const newSigX = Math.round(targetLeftPx / scaleFactor);
-    const newSigY = Math.round(pageDimensions.height - (targetTopPx / scaleFactor) - SIG_BOX_HEIGHT_PT);
-
-    onPlacementChange(clampPlacement(newSigX, newSigY, currentPage));
-  };
-
-  // Touch tap handling on mobile devices
-  const handlePageTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    const touch = e.touches[0];
-    if (touch) {
-      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.scale(dpr, dpr);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#000000';
     }
-  };
+  }, []);
 
-  const handlePageTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!touchStartPosRef.current || didDragRef.current || !pageContainerRef.current) return;
-    const touch = e.changedTouches[0];
-    if (!touch) return;
-
-    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
-    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
-    const dt = Date.now() - touchStartPosRef.current.time;
-
-    // Clean tap: minimal movement and short duration
-    if (dx < 10 && dy < 10 && dt < 400) {
-      const rect = pageContainerRef.current.getBoundingClientRect();
-      const clickX = touch.clientX - rect.left;
-      const clickY = touch.clientY - rect.top;
-
-      const targetLeftPx = clickX - sigBoxWidthPx / 2;
-      const targetTopPx = clickY - sigBoxHeightPx / 2;
-
-      const newSigX = Math.round(targetLeftPx / scaleFactor);
-      const newSigY = Math.round(pageDimensions.height - (targetTopPx / scaleFactor) - SIG_BOX_HEIGHT_PT);
-
-      onPlacementChange(clampPlacement(newSigX, newSigY, currentPage));
+  useEffect(() => {
+    if (activeTrayField && (activeTrayField.type === 'SIGNATURE' || activeTrayField.type === 'INITIALS') && trayMethod === 'DRAW') {
+      const timer = setTimeout(() => {
+        setupTrayCanvas();
+      }, 50);
+      return () => clearTimeout(timer);
     }
-    touchStartPosRef.current = null;
-  };
+  }, [activeTrayField, trayMethod, setupTrayCanvas]);
 
-  // Keyboard navigation for precision micro-adjustments
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const step = e.shiftKey ? 1 : 5;
-    let newX = placement.signatureX;
-    let newY = placement.signatureY;
+  // Open in-situ tray for a specific target field
+  const handleOpenTray = (field: PlacedField) => {
+    setActiveTrayField(field);
+    setTrayMethod(signatureMethod);
+    setHasDrawnStroke(false);
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
 
-    if (e.key === 'ArrowLeft') {
-      newX -= step;
-      e.preventDefault();
-    } else if (e.key === 'ArrowRight') {
-      newX += step;
-      e.preventDefault();
-    } else if (e.key === 'ArrowUp') {
-      newY += step;
-      e.preventDefault();
-    } else if (e.key === 'ArrowDown') {
-      newY -= step;
-      e.preventDefault();
-    } else {
+    if (field.type === 'INITIALS') {
+      const derived = signerName
+        ? signerName.split(/\s+/).filter(Boolean).map((n) => n[0]).join('').toUpperCase() || 'JD'
+        : 'JD';
+      const initialVal = (field.value && !field.value.startsWith('data:image')) ? field.value : derived;
+      setTrayInitials(initialVal);
+    } else if (field.type === 'TEXT') {
+      setTrayTextInput(field.value || '');
+    } else if (field.type === 'DATE') {
+      // Auto-populate date on single tap
+      const today = new Date().toISOString().split('T')[0];
+      const updated = fields.map((f) => (f.id === field.id ? { ...f, value: today } : f));
+      onFieldsChange(updated);
+      setActiveTrayField(null);
       return;
     }
 
-    onPlacementChange(clampPlacement(newX, newY, currentPage));
+    // Smoothly scroll container to bring the active target field into view
+    if (containerRef.current) {
+      const topPx = Math.round((pageDimensions.height - field.y - field.height) * scale);
+      containerRef.current.scrollTo({
+        top: Math.max(0, topPx - 80),
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  const handleCloseTray = () => {
+    setActiveTrayField(null);
+    setHasDrawnStroke(false);
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
+  };
+
+  // Pointer event handlers for drawing in tray
+  const getTrayCanvasCoords = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = trayCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  const handleTrayPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Fallback
+    }
+
+    isDrawingRef.current = true;
+    setIsDrawingTray(true);
+    setHasDrawnStroke(true);
+    const coords = getTrayCanvasCoords(e);
+    lastPointRef.current = coords;
+
+    const canvas = trayCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx) {
+      ctx.beginPath();
+      ctx.arc(coords.x, coords.y, 1.25, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+    }
+  };
+
+  const handleTrayPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const canvas = trayCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx || !lastPointRef.current) return;
+
+    const coords = getTrayCanvasCoords(e);
+
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+
+    lastPointRef.current = coords;
+    if (!hasDrawnStroke) {
+      setHasDrawnStroke(true);
+    }
+  };
+
+  const handleTrayPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // safe fallback
+    }
+
+    isDrawingRef.current = false;
+    setIsDrawingTray(false);
+    lastPointRef.current = null;
+  };
+
+  const handleClearTrayCanvas = () => {
+    const canvas = trayCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    setHasDrawnStroke(false);
+  };
+
+  // Generate calligraphy PNG data URL
+  const generateTypedDataUrl = (text: string, isInitials: boolean): string | null => {
+    if (!text.trim()) return null;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = isInitials ? 300 : 600;
+    offscreen.height = 180;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, offscreen.width, offscreen.height);
+    ctx.font = isInitials
+      ? 'bold italic 64px "Brush Script MT", "Segoe Script", "Dancing Script", cursive'
+      : 'italic 54px "Brush Script MT", "Segoe Script", "Dancing Script", cursive';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text.trim(), offscreen.width / 2, offscreen.height / 2);
+
+    return offscreen.toDataURL('image/png');
+  };
+
+  // Apply mark to field in-place
+  const handleApplyTrayMark = () => {
+    if (!activeTrayField) return;
+
+    let appliedDataUrl: string | null = null;
+    const isInitials = activeTrayField.type === 'INITIALS';
+
+    if (activeTrayField.type === 'SIGNATURE' || activeTrayField.type === 'INITIALS') {
+      if (trayMethod === 'DRAW') {
+        const canvas = trayCanvasRef.current;
+        if (canvas && hasDrawnStroke) {
+          appliedDataUrl = canvas.toDataURL('image/png');
+        } else if (isInitials && initialsDataUrl) {
+          appliedDataUrl = initialsDataUrl;
+        } else if (!isInitials && signatureDataUrl) {
+          appliedDataUrl = signatureDataUrl;
+        }
+      } else {
+        const textToUse = isInitials
+          ? (trayInitials.trim() || 'IN')
+          : (traySignerName.trim() || 'Signature');
+        appliedDataUrl = generateTypedDataUrl(textToUse, isInitials);
+      }
+
+      if (!appliedDataUrl) {
+        return; // Don't apply empty mark
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Update all fields: set mark on target field and auto-populate all DATE fields upon signing
+      const updatedFields = fields.map((f) => {
+        if (f.id === activeTrayField.id) {
+          return { ...f, value: appliedDataUrl || undefined };
+        }
+        // Auto-populate date fields upon signing
+        if (f.type === 'DATE' && !f.value) {
+          return { ...f, value: today };
+        }
+        return f;
+      });
+
+      onFieldsChange(updatedFields);
+
+      // Notify parent callbacks
+      if (activeTrayField.type === 'SIGNATURE') {
+        onSignatureChange?.(appliedDataUrl);
+        onSignatureMethodChange?.(trayMethod);
+        if (traySignerName && onSignerNameChange) {
+          onSignerNameChange(traySignerName);
+        }
+        if (placement && onPlacementChange) {
+          onPlacementChange({
+            ...placement,
+            page: activeTrayField.page,
+            signatureX: activeTrayField.x,
+            signatureY: activeTrayField.y,
+            dateX: activeTrayField.x,
+            dateY: Math.max(activeTrayField.y - 30, 20),
+          });
+        }
+      } else if (activeTrayField.type === 'INITIALS') {
+        onInitialsChange?.(appliedDataUrl);
+      }
+    } else if (activeTrayField.type === 'TEXT') {
+      const updatedFields = fields.map((f) =>
+        f.id === activeTrayField.id ? { ...f, value: trayTextInput.trim() } : f
+      );
+      onFieldsChange(updatedFields);
+    }
+
+    handleCloseTray();
+  };
+
+  // Jump to next field
+  const handleJumpToNextField = () => {
+    if (!fields || fields.length === 0) return;
+    const unsignedIdx = fields.findIndex((f) => !f.value);
+    const targetIdx = unsignedIdx >= 0 ? unsignedIdx : 0;
+    const target = fields[targetIdx];
+    if (target) {
+      if (target.page !== currentPage) {
+        setCurrentPage(target.page);
+      }
+      handleOpenTray(target);
+    }
   };
 
   const handlePrevPage = () => {
-    if (currentPage > 1) setCurrentPage((p) => p - 1);
+    if (currentPage > 1) {
+      setCurrentPage((p) => p - 1);
+      handleCloseTray();
+    }
   };
 
   const handleNextPage = () => {
-    if (currentPage < numPages) setCurrentPage((p) => p + 1);
+    if (currentPage < numPages) {
+      setCurrentPage((p) => p + 1);
+      handleCloseTray();
+    }
   };
 
   const handleZoomIn = () => setScale((s) => Math.min(s + 0.2, 2.5));
@@ -353,37 +473,43 @@ export function SignaturePlacementViewer({
   const handleFitWidth = () => {
     if (containerRef.current) {
       const containerWidth = containerRef.current.clientWidth - 48;
-      setScale(Math.max(0.7, containerWidth / 600));
+      setScale(Math.max(0.7, containerWidth / 612));
     }
   };
 
-  const isCurrentPlacementPage = currentPage === placement.page;
+  // Calculate tethered style for tray in desktop view
+  const getTetheredTrayStyle = (): React.CSSProperties => {
+    if (!activeTrayField || isMobile) {
+      return { touchAction: 'none' };
+    }
+    const leftPx = Math.max(
+      12,
+      Math.min(
+        Math.round(activeTrayField.x * scale) + Math.round((activeTrayField.width * scale) / 2) - 210,
+        Math.round(pageDimensions.width * scale) - 432
+      )
+    );
+    const topPx = Math.round((pageDimensions.height - activeTrayField.y - activeTrayField.height) * scale);
+    const heightPx = Math.round(activeTrayField.height * scale);
+    const preferredTop =
+      topPx + heightPx + 420 > pageDimensions.height * scale
+        ? Math.max(12, topPx - 410)
+        : topPx + heightPx + 12;
 
-  const handleMoveToCurrentPage = () => {
-    onPlacementChange({
-      ...placement,
-      page: currentPage,
-    });
+    return {
+      top: `${preferredTop}px`,
+      left: `${leftPx}px`,
+      touchAction: 'none',
+    };
   };
 
-  const handleResetToDefault = () => {
-    const targetPage = defaultPlacementPage && defaultPlacementPage > 0 && defaultPlacementPage <= numPages
-      ? defaultPlacementPage
-      : numPages;
-    setCurrentPage(targetPage);
-    onPlacementChange({
-      page: targetPage,
-      signatureX: 70,
-      signatureY: 115,
-      nameX: 70,
-      nameY: 97,
-      dateX: 70,
-      dateY: 85,
-    });
-  };
+  // Filter fields on current page
+  const pageFields = fields.filter((f) => f.page === currentPage);
+  const totalCompleted = fields.filter((f) => Boolean(f.value)).length;
+  const totalRequired = fields.filter((f) => f.required !== false).length;
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-neutral-100 border border-neutral-300 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 bg-neutral-100 border border-neutral-300 overflow-hidden select-none">
       {/* Top Toolbar */}
       <div className="flex-shrink-0 flex flex-wrap items-center justify-between p-3 bg-white border-b border-neutral-200 text-xs gap-2">
         {/* Page Navigation */}
@@ -411,28 +537,21 @@ export function SignaturePlacementViewer({
           >
             <ArrowRightIcon className="w-3.5 h-3.5" />
           </Button>
-
-          {!isCurrentPlacementPage && (
-            <button
-              type="button"
-              onClick={handleMoveToCurrentPage}
-              className="ml-2 px-2 py-1 text-xs font-semibold bg-neutral-100 hover:bg-black hover:text-white border border-neutral-300 transition-colors cursor-pointer"
-            >
-              Place on this page
-            </button>
-          )}
         </div>
 
-        {/* Zoom & Reset Toolbar */}
+        {/* Guided Signing Indicator & Zoom Controls */}
         <div className="flex items-center space-x-2">
-          {fields && fields.length > 0 && (
+          {fields.length > 0 && (
             <button
               type="button"
-              onClick={handleNextField}
-              className="px-2.5 py-1 text-xs border border-black bg-black text-white hover:bg-neutral-800 font-semibold inline-flex items-center gap-1.5 shadow-sm cursor-pointer ml-1"
+              onClick={handleJumpToNextField}
+              className="px-2.5 py-1 text-xs border border-black bg-black text-white hover:bg-neutral-800 font-semibold inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
-              <span>Next Field ({focusedFieldIndex + 1}/{fields.length})</span>
-              <span>→</span>
+              <span>
+                {totalCompleted === fields.length
+                  ? 'All Fields Signed ✓'
+                  : `Next Field (${totalCompleted}/${fields.length}) →`}
+              </span>
             </button>
           )}
 
@@ -460,54 +579,34 @@ export function SignaturePlacementViewer({
           >
             Fit
           </button>
-          <button
-            type="button"
-            onClick={handleResetToDefault}
-            className="px-2 py-1 text-xs border border-neutral-300 hover:border-black font-medium text-neutral-700 hover:text-black cursor-pointer ml-1"
-            title="Reset signature to default location on signature page"
-          >
-            Reset
-          </button>
         </div>
       </div>
 
-      {/* Page indicator & coordinates banner */}
-      <div className="flex-shrink-0 bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex items-center justify-between text-[11px] text-neutral-600">
+      {/* Sub-toolbar Guidance Banner */}
+      <div className="flex-shrink-0 bg-neutral-50 px-4 py-2 border-b border-neutral-200 flex items-center justify-between text-[11px] text-neutral-700">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-black inline-block" />
-          <span>
-            {fields && fields.length > 0 ? (
-              <span className="font-semibold text-black">
-                Guided Signing: Field {focusedFieldIndex + 1} of {fields.length} ({fields[focusedFieldIndex]?.label || fields[focusedFieldIndex]?.type})
-              </span>
-            ) : isCurrentPlacementPage ? (
-              <span className="font-semibold text-black">
-                Signature active on Page {placement.page}
-              </span>
-            ) : (
-              <span>
-                Viewing Page {currentPage}. Signature currently on{' '}
-                <strong className="text-black">Page {placement.page}</strong>.
-              </span>
-            )}
+          <span className="font-semibold text-black">
+            In-Situ Document Signing: Tap any highlighted field to apply your electronic signature or date.
           </span>
         </div>
-        <div className="font-mono text-neutral-700">
-          X: {placement.signatureX} pt &bull; Y: {placement.signatureY} pt
+        <div className="font-mono text-neutral-600 hidden sm:block">
+          {totalCompleted} of {totalRequired || fields.length} required fields completed
         </div>
       </div>
 
-      {/* Main PDF Canvas & Interactive Draggable Overlay */}
+      {/* Main Document Viewer with In-Situ Tap-to-Ink Anchors */}
       <div
         ref={containerRef}
         className="flex-1 min-h-0 overflow-auto p-4 sm:p-6"
         tabIndex={0}
-        aria-label="Contract signature placement view"
+        aria-label="Contract interactive document signing view"
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {isLoading ? (
           <div className="flex flex-col items-center justify-center min-h-full space-y-3">
             <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs text-neutral-600 font-medium">Preparing document for placement...</p>
+            <p className="text-xs text-neutral-600 font-medium">Loading document for signing...</p>
           </div>
         ) : error ? (
           <div className="flex items-center justify-center min-h-full">
@@ -520,155 +619,297 @@ export function SignaturePlacementViewer({
             {/* Page Container */}
             <div
               ref={pageContainerRef}
-              onClick={handlePageClick}
-              onTouchStart={handlePageTouchStart}
-              onTouchEnd={handlePageTouchEnd}
-              className="relative inline-block bg-white shadow-md border border-neutral-300 flex-shrink-0 cursor-crosshair select-none"
+              className="relative inline-block bg-white shadow-lg border border-neutral-300 flex-shrink-0 select-none"
             >
               <canvas ref={canvasRef} className="block pointer-events-none" />
 
-              {/* Render Multi-Fields if provided */}
-              {fields && fields.length > 0 ? (
-                fields
-                  .filter((f) => f.page === currentPage)
-                  .map((f) => {
-                    const isFocused = fields[focusedFieldIndex]?.id === f.id;
-                    const leftPx = Math.round(f.x * scale);
-                    const topPx = Math.round((pageDimensions.height - f.y - f.height) * scale);
-                    const widthPx = Math.round(f.width * scale);
-                    const heightPx = Math.round(f.height * scale);
+              {/* Render High-Visibility In-Situ Anchors for fields on this page */}
+              {pageFields.map((field) => {
+                const leftPx = Math.round(field.x * scale);
+                const topPx = Math.round((pageDimensions.height - field.y - field.height) * scale);
+                const widthPx = Math.round(field.width * scale);
+                const heightPx = Math.round(field.height * scale);
+                const hasValue = Boolean(field.value);
+                const isTrayActive = activeTrayField?.id === field.id;
 
-                    return (
-                      <div
-                        key={f.id}
-                        style={{
-                          position: 'absolute',
-                          left: `${leftPx}px`,
-                          top: `${topPx}px`,
-                          width: `${widthPx}px`,
-                          height: `${heightPx}px`,
-                        }}
-                        className={`border-2 select-none transition-all ${
-                          isFocused
-                            ? 'border-black bg-white ring-2 ring-black shadow-xl z-20'
-                            : 'border-dashed border-neutral-700 bg-white/95 shadow-md z-10'
-                        }`}
-                      >
-                        {/* Header badge tab */}
-                        <div className="absolute -top-6 left-0 bg-black text-white text-[9px] font-mono font-bold px-1.5 py-0.5 uppercase flex items-center gap-1 shadow-sm">
-                          <span>{f.label || f.type}</span>
-                          {isFocused && (
-                            <span className="bg-white text-black px-1 text-[8px] font-bold">
-                              ACTIVE
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Content inside field */}
-                        <div className="w-full h-full p-1 flex items-center justify-center overflow-hidden pointer-events-none">
-                          {f.type === 'SIGNATURE' && (
-                            signatureDataUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={signatureDataUrl}
-                                alt="Signature"
-                                className="max-h-full max-w-full object-contain select-none"
-                              />
-                            ) : (
-                              <span className="text-[10px] text-neutral-400 font-mono">[ Signature ]</span>
-                            )
-                          )}
-                          {f.type === 'INITIALS' && (
-                            initialsDataUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={initialsDataUrl}
-                                alt="Initials"
-                                className="max-h-full max-w-full object-contain select-none"
-                              />
-                            ) : (
-                              <span className="text-[11px] font-bold font-mono text-black">
-                                {f.value || _signerName?.split(' ').map((n) => n[0]).join('').toUpperCase() || 'IN'}
-                              </span>
-                            )
-                          )}
-                          {f.type === 'DATE' && (
-                            <span className="text-[11px] font-mono text-neutral-800">
-                              {f.value || new Date().toISOString().split('T')[0]}
-                            </span>
-                          )}
-                          {f.type === 'TEXT' && (
-                            <span className="text-[11px] text-neutral-800 font-medium truncate">
-                              {f.value || '[ Text Field ]'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-              ) : (
-                /* Single signature placement fallback */
-                isCurrentPlacementPage && (
+                return (
                   <div
-                    ref={badgeRef}
+                    key={field.id}
+                    onClick={() => handleOpenTray(field)}
+                    role="button"
                     tabIndex={0}
-                    role="region"
-                    aria-label="Signature badge. Drag or use arrow keys to position."
-                    onKeyDown={handleKeyDown}
-                    onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY, e)}
-                    onTouchStart={(e) => {
-                      e.stopPropagation();
-                      const touch = e.touches[0];
-                      if (touch) {
-                        handlePointerDown(touch.clientX, touch.clientY, e);
-                      }
-                    }}
+                    aria-label={`${field.label || field.type}: ${hasValue ? 'Signed' : 'Tap to sign'}`}
                     style={{
                       position: 'absolute',
-                      left: `${sigBoxLeftPx}px`,
-                      top: `${sigBoxTopPx}px`,
-                      width: `${sigBoxWidthPx}px`,
-                      touchAction: 'none',
+                      left: `${leftPx}px`,
+                      top: `${topPx}px`,
+                      width: `${widthPx}px`,
+                      height: `${heightPx}px`,
+                      touchAction: 'manipulation',
                     }}
-                    className={`select-none transition-shadow ${
-                      isDragging ? 'cursor-grabbing z-30' : 'cursor-grab z-20 hover:z-30'
+                    className={`cursor-pointer transition-all duration-150 ${
+                      hasValue
+                        ? 'border-2 border-black bg-white/95 shadow-sm hover:ring-2 hover:ring-black'
+                        : isTrayActive
+                        ? 'border-2 border-black bg-white ring-2 ring-black shadow-xl z-30'
+                        : 'border-2 border-dashed border-black bg-white/90 hover:bg-neutral-50 shadow-md hover:border-solid z-20'
                     }`}
                   >
+                    {/* Header Anchor Tab Badge */}
                     <div
-                      className={`absolute -top-7 left-0 right-0 h-6 px-2 flex items-center justify-between text-[10px] font-mono border border-black shadow-sm pointer-events-none select-none transition-colors ${
-                        isDragging ? 'bg-black text-white ring-1 ring-black' : 'bg-black text-white hover:bg-neutral-800'
+                      className={`absolute -top-6 left-0 text-[9px] font-mono font-bold px-1.5 py-0.5 uppercase flex items-center gap-1 shadow-sm transition-colors ${
+                        hasValue
+                          ? 'bg-black text-white'
+                          : 'bg-black text-white ring-1 ring-black'
                       }`}
                     >
-                      <span className="flex items-center space-x-1 font-semibold truncate mr-1">
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                        </svg>
-                        <span className="truncate">Drag to position</span>
+                      <span>
+                        {hasValue ? '✓' : '✍'}{' '}
+                        {field.label || (field.type === 'SIGNATURE' ? 'Signature' : field.type === 'INITIALS' ? 'Initials' : field.type)}
                       </span>
-                      <span className="text-[9px] bg-neutral-800 text-neutral-200 px-1 py-0.5 border border-neutral-700 font-mono flex-shrink-0">
-                        P.{placement.page} ({placement.signatureX},{placement.signatureY})
-                      </span>
+                      {hasValue && (
+                        <span className="text-[8px] bg-neutral-800 text-neutral-300 px-1 py-0.2">
+                          DONE
+                        </span>
+                      )}
                     </div>
 
-                    <div
-                      style={{ height: `${sigBoxHeightPx}px` }}
-                      className={`w-full border-2 border-dashed border-black bg-white/90 flex items-center justify-center p-1 overflow-hidden transition-all ${
-                        isDragging ? 'shadow-2xl ring-2 ring-black bg-white' : 'shadow-md hover:shadow-lg'
-                      }`}
-                    >
-                      {signatureDataUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={signatureDataUrl}
-                          alt="Signature preview"
-                          className="max-h-full max-w-full object-contain pointer-events-none select-none"
-                        />
+                    {/* Field Content Bounding Box */}
+                    <div className="w-full h-full p-1 flex items-center justify-center overflow-hidden pointer-events-none">
+                      {hasValue ? (
+                        field.type === 'SIGNATURE' || (field.type === 'INITIALS' && field.value?.startsWith('data:image')) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={field.value}
+                            alt="Applied mark"
+                            className="max-h-full max-w-full object-contain select-none"
+                          />
+                        ) : field.type === 'DATE' ? (
+                          <span className="text-xs sm:text-sm font-mono font-bold text-black truncate">
+                            {field.value}
+                          </span>
+                        ) : field.type === 'INITIALS' ? (
+                          <span className="text-sm font-mono font-bold text-black tracking-widest">
+                            {field.value}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-neutral-900 font-medium truncate">
+                            {field.value}
+                          </span>
+                        )
                       ) : (
-                        <span className="text-[10px] text-neutral-400 font-mono">Signature Blank</span>
+                        /* Unsigned Tap-to-Ink Prompt */
+                        <div className="flex flex-col items-center justify-center text-center p-0.5">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-black uppercase tracking-wider flex items-center gap-1">
+                            <span>✍</span>
+                            <span>
+                              {field.type === 'SIGNATURE'
+                                ? 'Tap to Sign'
+                                : field.type === 'INITIALS'
+                                ? 'Tap to Initial'
+                                : field.type === 'DATE'
+                                ? 'Tap for Date'
+                                : 'Tap to Fill'}
+                            </span>
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
-                )
+                );
+              })}
+
+              {/* In-Situ Ergonomic Drawing Tray / Popover tethered to active target field */}
+              {activeTrayField && (
+                <>
+                  {/* Backdrop for mobile & click-outside protection */}
+                  <div
+                    className="fixed inset-0 bg-black/40 z-40 sm:hidden"
+                    onClick={handleCloseTray}
+                    onTouchMove={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    aria-hidden="true"
+                  />
+
+                  {/* Tray Container (Responsive: Tethered popover on desktop, bottom sheet on mobile) */}
+                  <div
+                    role="dialog"
+                    aria-label={`Complete ${activeTrayField.label || activeTrayField.type}`}
+                    onTouchMove={(e) => e.stopPropagation()}
+                    style={getTetheredTrayStyle()}
+                    className="fixed sm:absolute z-50 bottom-0 inset-x-0 sm:bottom-auto sm:inset-x-auto w-full sm:w-[420px] bg-white border-t-2 sm:border-2 border-black shadow-2xl p-4 sm:p-5 text-black"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-neutral-200 pb-3 mb-3">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-black flex items-center gap-1.5">
+                          <span>✍</span>
+                          <span>
+                            {activeTrayField.type === 'SIGNATURE'
+                              ? 'Apply Signature'
+                              : activeTrayField.type === 'INITIALS'
+                              ? 'Apply Initials'
+                              : activeTrayField.type === 'TEXT'
+                              ? 'Enter Information'
+                              : 'Select Date'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500 mt-0.5">
+                          Target line on Page {activeTrayField.page}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCloseTray}
+                        className="text-neutral-500 hover:text-black font-mono font-bold text-sm px-1.5 py-0.5 border border-transparent hover:border-black cursor-pointer"
+                        aria-label="Close drawing tray"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Content for SIGNATURE & INITIALS */}
+                    {(activeTrayField.type === 'SIGNATURE' || activeTrayField.type === 'INITIALS') && (
+                      <div className="space-y-3">
+                        {/* Legal Signer Name or Initials input */}
+                        {activeTrayField.type === 'INITIALS' ? (
+                          <div>
+                            <label className="text-[11px] font-semibold text-neutral-700 block mb-1">
+                              Signer Initials
+                            </label>
+                            <input
+                              type="text"
+                              value={trayInitials}
+                              maxLength={6}
+                              onChange={(e) => setTrayInitials(e.target.value.toUpperCase())}
+                              placeholder="e.g. JD"
+                              className="w-full text-xs px-2.5 py-1.5 border border-black focus:ring-1 focus:ring-black outline-none font-mono font-bold tracking-widest uppercase"
+                            />
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="text-[11px] font-semibold text-neutral-700 block mb-1">
+                              Signer Legal Full Name
+                            </label>
+                            <input
+                              type="text"
+                              value={traySignerName}
+                              onChange={(e) => setTraySignerName(e.target.value)}
+                              placeholder="Enter your legal full name"
+                              className="w-full text-xs px-2.5 py-1.5 border border-black focus:ring-1 focus:ring-black outline-none font-medium"
+                            />
+                          </div>
+                        )}
+
+                        {/* Drawing / Typing Tab Switcher */}
+                        <div className="flex border-b border-neutral-300">
+                          <button
+                            type="button"
+                            onClick={() => setTrayMethod('DRAW')}
+                            className={`flex-1 py-1.5 text-xs font-semibold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
+                              trayMethod === 'DRAW'
+                                ? 'border-black text-black'
+                                : 'border-transparent text-neutral-500 hover:text-black'
+                            }`}
+                          >
+                            Draw Ink
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTrayMethod('TYPE')}
+                            className={`flex-1 py-1.5 text-xs font-semibold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
+                              trayMethod === 'TYPE'
+                                ? 'border-black text-black'
+                                : 'border-transparent text-neutral-500 hover:text-black'
+                            }`}
+                          >
+                            Type Calligraphy
+                          </button>
+                        </div>
+
+                        {/* Method A: Smooth Pointer Events Drawing Canvas */}
+                        {trayMethod === 'DRAW' ? (
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[11px] text-neutral-500">
+                              <span>Draw smoothly with finger, stylus, or mouse</span>
+                              {hasDrawnStroke && (
+                                <button
+                                  type="button"
+                                  onClick={handleClearTrayCanvas}
+                                  className="text-black font-semibold hover:underline cursor-pointer"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="relative w-full h-36 border border-black bg-white touch-none cursor-crosshair">
+                              <canvas
+                                ref={trayCanvasRef}
+                                className="w-full h-full block"
+                                style={{ touchAction: 'none' }}
+                                onPointerDown={handleTrayPointerDown}
+                                onPointerMove={handleTrayPointerMove}
+                                onPointerUp={handleTrayPointerUp}
+                                onPointerCancel={handleTrayPointerUp}
+                              />
+                              {!hasDrawnStroke && !isDrawingTray && (
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-neutral-400 text-xs select-none">
+                                  {activeTrayField.type === 'INITIALS' ? 'Initial here' : 'Sign here'}
+                                </div>
+                              )}
+                              <div className="absolute bottom-4 left-4 right-4 border-b border-dashed border-neutral-300 pointer-events-none" />
+                            </div>
+                          </div>
+                        ) : (
+                          /* Method B: Typed Calligraphy Representation */
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] text-neutral-500">
+                              Calligraphic electronic mark preview
+                            </div>
+                            <div className="h-36 border border-black bg-white flex items-center justify-center p-3 relative">
+                              <div className="font-signature text-3xl sm:text-4xl text-black italic text-center select-none">
+                                {activeTrayField.type === 'INITIALS'
+                                  ? (trayInitials.trim() || 'IN')
+                                  : (traySignerName.trim() || 'Your Signature')}
+                              </div>
+                              <div className="absolute bottom-4 left-4 right-4 border-b border-dashed border-neutral-300 pointer-events-none" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Content for TEXT fields */}
+                    {activeTrayField.type === 'TEXT' && (
+                      <div className="space-y-3">
+                        <label className="text-xs font-semibold text-neutral-800 block">
+                          {activeTrayField.label || 'Field Value'}
+                        </label>
+                        <input
+                          type="text"
+                          value={trayTextInput}
+                          onChange={(e) => setTrayTextInput(e.target.value)}
+                          placeholder="Enter value"
+                          className="w-full text-xs px-3 py-2 border border-black focus:ring-1 focus:ring-black outline-none font-medium"
+                          autoFocus
+                        />
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-end space-x-2 pt-3 mt-3 border-t border-neutral-200">
+                      <Button variant="outline" size="sm" onClick={handleCloseTray}>
+                        Cancel
+                      </Button>
+                      <Button variant="primary" size="sm" onClick={handleApplyTrayMark}>
+                        Apply to Document ✓
+                      </Button>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>

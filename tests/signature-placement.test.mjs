@@ -245,4 +245,132 @@ test('Data URI prefix sanitizer correctly handles raw base64 and standard PDF da
   assert.equal(sanitize(withWhitespace), raw);
 });
 
+test('In-Situ Field PNG Data URI embedding: stamps both image signature and image initials fields', async () => {
+  const originalPdfBuffer = await createMultiPageTestPdf(1);
+
+  const fieldsWithImages = [
+    {
+      id: 'f-sig',
+      type: 'SIGNATURE',
+      page: 1,
+      x: 70,
+      y: 115,
+      width: 170,
+      height: 50,
+      value: SAMPLE_PNG_BASE64,
+    },
+    {
+      id: 'f-ini',
+      type: 'INITIALS',
+      page: 1,
+      x: 260,
+      y: 115,
+      width: 80,
+      height: 40,
+      value: SAMPLE_PNG_BASE64,
+    },
+  ];
+
+  const signedBuffer = await generateSignedPdf({
+    originalPdfBuffer,
+    clientName: 'Jane Smith',
+    signaturePngBase64: SAMPLE_PNG_BASE64,
+    contractId: 'contract-test-images',
+    contractTitle: 'In-Situ Field Images',
+    signedAtDate: '2026-10-07T12:00:00.000Z',
+    fields: fieldsWithImages,
+  });
+
+  assert.ok(signedBuffer instanceof Buffer);
+  const loaded = await PDFDocument.load(signedBuffer);
+  assert.equal(loaded.getPageCount(), 1);
+});
+
+test('In-situ tethered tray positioning: desktop tethering vs mobile bottom sheet docking', () => {
+  const pageDimensions = { width: 612, height: 792 };
+  const scale = 1.0;
+
+  function calculateTrayStyle(field, isMobile) {
+    if (!field || isMobile) {
+      return { touchAction: 'none' };
+    }
+    const leftPx = Math.max(
+      12,
+      Math.min(
+        Math.round(field.x * scale) + Math.round((field.width * scale) / 2) - 210,
+        Math.round(pageDimensions.width * scale) - 432
+      )
+    );
+    const topPx = Math.round((pageDimensions.height - field.y - field.height) * scale);
+    const heightPx = Math.round(field.height * scale);
+    const preferredTop =
+      topPx + heightPx + 420 > pageDimensions.height * scale
+        ? Math.max(12, topPx - 410)
+        : topPx + heightPx + 12;
+
+    return {
+      top: `${preferredTop}px`,
+      left: `${leftPx}px`,
+      touchAction: 'none',
+    };
+  }
+
+  const sampleField = { id: 'f1', type: 'SIGNATURE', page: 1, x: 100, y: 150, width: 170, height: 50 };
+
+  // Mobile mode must not set inline top and left coordinates
+  const mobileStyle = calculateTrayStyle(sampleField, true);
+  assert.strictEqual(mobileStyle.top, undefined, 'Mobile style must not contain inline top');
+  assert.strictEqual(mobileStyle.left, undefined, 'Mobile style must not contain inline left');
+  assert.strictEqual(mobileStyle.touchAction, 'none');
+
+  // Desktop mode must calculate tethered coordinates
+  const desktopStyle = calculateTrayStyle(sampleField, false);
+  assert.ok(desktopStyle.top !== undefined, 'Desktop style must calculate inline top');
+  assert.ok(desktopStyle.left !== undefined, 'Desktop style must calculate inline left');
+  assert.strictEqual(typeof desktopStyle.top, 'string');
+  assert.strictEqual(typeof desktopStyle.left, 'string');
+});
+
+test('In-situ required fields validation ensures all mandatory fields are completed', () => {
+  function validateFieldsForReview(signerName, fields, hasAppliedSignature) {
+    if (!signerName.trim()) {
+      return { valid: false, error: 'Please enter your full legal name before proceeding.' };
+    }
+    if (!hasAppliedSignature) {
+      return { valid: false, error: 'Please tap the designated signature anchor on the document to apply your signature.' };
+    }
+    const missingRequired = fields.filter(
+      (f) => f.required !== false && f.type !== 'DATE' && !f.value
+    );
+    if (missingRequired.length > 0) {
+      const missingLabels = missingRequired
+        .map((f) => f.label || (f.type === 'SIGNATURE' ? 'Signature' : f.type === 'INITIALS' ? 'Initials' : f.type))
+        .join(', ');
+      return { valid: false, error: `Please complete all required fields (${missingLabels}) before proceeding.` };
+    }
+    return { valid: true };
+  }
+
+  const incompleteFields = [
+    { id: '1', type: 'SIGNATURE', required: true, value: 'data:image/png;base64,...' },
+    { id: '2', type: 'INITIALS', required: true, value: undefined },
+    { id: '3', type: 'DATE', required: true, value: undefined },
+  ];
+
+  // Missing initials should be rejected
+  const res1 = validateFieldsForReview('John Doe', incompleteFields, true);
+  assert.strictEqual(res1.valid, false);
+  assert.match(res1.error, /Initials/);
+
+  // When initials are filled, validation passes (DATE is auto-populated upon signing)
+  incompleteFields[1].value = 'JD';
+  const res2 = validateFieldsForReview('John Doe', incompleteFields, true);
+  assert.strictEqual(res2.valid, true);
+
+  // Missing name is rejected
+  const res3 = validateFieldsForReview('', incompleteFields, true);
+  assert.strictEqual(res3.valid, false);
+  assert.match(res3.error, /legal name/);
+});
+
 

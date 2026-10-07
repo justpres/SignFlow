@@ -106,24 +106,45 @@ export async function generateSignedPdf({
       const fHeight = field.height || (field.type === 'INITIALS' ? 40 : 50);
 
       if (field.type === 'SIGNATURE') {
-        const dims = signatureImage.scaleToFit(fWidth, fHeight);
-        targetPage.drawImage(signatureImage, {
+        let sigImg = signatureImage;
+        if (field.value?.startsWith('data:image')) {
+          try {
+            const cleanBytes = Buffer.from(field.value.replace(/^data:image\/[^;]+;base64,/, ''), 'base64');
+            sigImg = await pdfDoc.embedPng(cleanBytes);
+          } catch {
+            // fallback to signatureImage
+          }
+        }
+        const dims = sigImg.scaleToFit(fWidth, fHeight);
+        targetPage.drawImage(sigImg, {
           x: field.x + (fWidth - dims.width) / 2,
           y: field.y + (fHeight - dims.height) / 2,
           width: dims.width,
           height: dims.height,
         });
       } else if (field.type === 'INITIALS') {
-        if (initialsImage) {
-          const dims = initialsImage.scaleToFit(fWidth, fHeight);
-          targetPage.drawImage(initialsImage, {
+        let fieldImg = initialsImage;
+        if (field.value?.startsWith('data:image')) {
+          try {
+            const cleanBytes = Buffer.from(field.value.replace(/^data:image\/[^;]+;base64,/, ''), 'base64');
+            fieldImg = await pdfDoc.embedPng(cleanBytes);
+          } catch {
+            // fallback to initialsImage
+          }
+        }
+
+        if (fieldImg) {
+          const dims = fieldImg.scaleToFit(fWidth, fHeight);
+          targetPage.drawImage(fieldImg, {
             x: field.x + (fWidth - dims.width) / 2,
             y: field.y + (fHeight - dims.height) / 2,
             width: dims.width,
             height: dims.height,
           });
         } else {
-          const initialsText = field.value || clientName.split(' ').map((n) => n[0]).join('').toUpperCase() || 'IN';
+          const initialsText = (field.value && !field.value.startsWith('data:image'))
+            ? field.value
+            : (clientName.split(' ').map((n) => n[0]).join('').toUpperCase() || 'IN');
           targetPage.drawText(initialsText, {
             x: field.x + 6,
             y: field.y + (fHeight / 2) - 5,

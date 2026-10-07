@@ -1,9 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PdfViewer } from '@/components/pdf/PdfViewer';
-import { SignaturePad } from '@/components/signature/SignaturePad';
-import { TypedSignature } from '@/components/signature/TypedSignature';
 import { SignaturePlacementViewer } from '@/components/signing/SignaturePlacementViewer';
 import { ProgressBar } from '@/components/signing/ProgressBar';
 import { SigningErrorState } from '@/components/signing/SigningErrorState';
@@ -12,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { LockIcon, DocumentIcon } from '@/components/ui/Icons';
-import { SignaturePlacement, PlacedField } from '@/lib/types';
+import { PlacedField } from '@/lib/types';
 
 interface ContractData {
   id: string;
@@ -39,9 +36,9 @@ interface SigningFlowProps {
 }
 
 export function SigningFlow({ token }: SigningFlowProps) {
-  // Step definitions: 1 = Intro, 2 = Review Document, 3 = Signature, 4 = Place Signature, 5 = Confirm & Sign
+  // Streamlined 3-step in-situ flow: 1 = Intro, 2 = Review & Sign, 3 = Confirm & Finalize
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const steps = ['Introduction', 'Review Document', 'Signature', 'Place Signature', 'Confirm & Sign'];
+  const steps = ['Introduction', 'Review & Sign', 'Confirm & Finalize'];
 
   // Contract data state
   const [contract, setContract] = useState<ContractData | null>(null);
@@ -49,26 +46,14 @@ export function SigningFlow({ token }: SigningFlowProps) {
   const [loadingInitial, setLoadingInitial] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<'EXPIRED' | 'REVOKED' | 'ALREADY_SIGNED' | 'NOT_FOUND' | 'ERROR' | 'WAITING_COUNTER_SIGN' | null>(null);
 
-  // Form inputs
+  // Form & In-situ state
   const [signerName, setSignerName] = useState<string>('');
-  const [signerInitials, setSignerInitials] = useState<string>('');
-  const [textFieldsValues, setTextFieldsValues] = useState<Record<string, string>>({});
+  const [fields, setFields] = useState<PlacedField[]>([]);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [initialsDataUrl, setInitialsDataUrl] = useState<string | null>(null);
   const [signatureMethod, setSignatureMethod] = useState<'DRAW' | 'TYPE'>('DRAW');
-  const [drawnSignatureDataUrl, setDrawnSignatureDataUrl] = useState<string | null>(null);
-  const [typedSignatureDataUrl, setTypedSignatureDataUrl] = useState<string | null>(null);
   const [confirmationChecked, setConfirmationChecked] = useState<boolean>(false);
   const [isWaitingCounterSign, setIsWaitingCounterSign] = useState<boolean>(false);
-
-  // Placement state
-  const [placement, setPlacement] = useState<SignaturePlacement>({
-    page: 1,
-    signatureX: 70,
-    signatureY: 115,
-    nameX: 70,
-    nameY: 97,
-    dateX: 70,
-    dateY: 85,
-  });
 
   // Validation & Finalization states
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -113,29 +98,47 @@ export function SigningFlow({ token }: SigningFlowProps) {
       }
 
       setContract(data.contract);
-      setSignerName(data.contract.clientName || '');
-      if (data.contract.clientName) {
-        setSignerInitials(data.contract.clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase());
-      }
-      if (data.contract.fields) {
-        const textVals: Record<string, string> = {};
-        data.contract.fields.forEach((f: PlacedField) => {
-          if (f.type === 'TEXT' && f.value) textVals[f.id] = f.value;
-        });
-        setTextFieldsValues(textVals);
-      }
       setPdfBase64(data.pdfBase64);
 
-      if (data.contract.signaturePage || data.contract.signatureX || data.contract.signatureY) {
-        setPlacement({
+      const clientName = data.contract.clientName || '';
+      setSignerName(clientName);
+
+      // Synthesize default in-situ anchors if no explicit multi-fields were configured
+      const defaultFields: PlacedField[] = [
+        {
+          id: 'field-sig-primary',
+          type: 'SIGNATURE',
           page: data.contract.signaturePage || 1,
-          signatureX: data.contract.signatureX ?? 70,
-          signatureY: data.contract.signatureY ?? 115,
-          nameX: data.contract.nameX ?? (data.contract.signatureX ?? 70),
-          nameY: data.contract.nameY ?? Math.max((data.contract.signatureY ?? 115) - 18, 40),
-          dateX: data.contract.dateX ?? (data.contract.nameX ?? (data.contract.signatureX ?? 70)),
-          dateY: data.contract.dateY ?? Math.max((data.contract.signatureY ?? 115) - 30, 25),
-        });
+          x: data.contract.signatureX ?? 70,
+          y: data.contract.signatureY ?? 115,
+          width: 170,
+          height: 50,
+          label: 'Client Signature',
+          required: true,
+        },
+        {
+          id: 'field-date-primary',
+          type: 'DATE',
+          page: data.contract.signaturePage || 1,
+          x: data.contract.dateX ?? (data.contract.signatureX ?? 70),
+          y: data.contract.dateY ?? Math.max((data.contract.signatureY ?? 115) - 30, 25),
+          width: 110,
+          height: 28,
+          label: 'Date Signed',
+          required: true,
+        },
+      ];
+
+      if (data.contract.fields && data.contract.fields.length > 0) {
+        // Ensure at least one SIGNATURE field exists
+        const hasSig = data.contract.fields.some((f: PlacedField) => f.type === 'SIGNATURE');
+        if (!hasSig) {
+          setFields([...data.contract.fields, defaultFields[0]]);
+        } else {
+          setFields(data.contract.fields);
+        }
+      } else {
+        setFields(defaultFields);
       }
     } catch {
       setFetchError('ERROR');
@@ -148,28 +151,38 @@ export function SigningFlow({ token }: SigningFlowProps) {
     fetchContract();
   }, [fetchContract]);
 
-  const activeSignatureDataUrl = signatureMethod === 'DRAW' ? drawnSignatureDataUrl : typedSignatureDataUrl;
+  // Check if primary signature is completed
+  const hasAppliedSignature = Boolean(
+    signatureDataUrl || fields.some((f) => f.type === 'SIGNATURE' && Boolean(f.value))
+  );
 
-  const handleProceedToSignature = () => {
-    setCurrentStep(3);
-  };
-
-  const handleProceedToPlacement = () => {
+  const handleProceedToFinalReview = () => {
     if (!signerName.trim()) {
-      setValidationError('Please enter your full legal name.');
+      setValidationError('Please enter your full legal name before proceeding.');
       return;
     }
-    if (!activeSignatureDataUrl) {
-      setValidationError('Please add your signature before continuing.');
+    if (!hasAppliedSignature) {
+      setValidationError('Please tap the designated signature anchor on the document to apply your signature.');
+      return;
+    }
+    // Verify all required fields (excluding DATE which auto-populates upon signature)
+    const missingRequired = fields.filter(
+      (f) => f.required !== false && f.type !== 'DATE' && !f.value
+    );
+    if (missingRequired.length > 0) {
+      const missingLabels = missingRequired
+        .map((f) => f.label || (f.type === 'SIGNATURE' ? 'Signature' : f.type === 'INITIALS' ? 'Initials' : f.type))
+        .join(', ');
+      setValidationError(`Please complete all required fields (${missingLabels}) before proceeding.`);
       return;
     }
     setValidationError(null);
-    setCurrentStep(4);
+    setCurrentStep(3);
   };
 
   const handleFinalSubmit = async () => {
     if (!confirmationChecked) {
-      setValidationError('You must confirm that you reviewed the contract before signing.');
+      setValidationError('You must confirm that you reviewed the contract before finalizing.');
       return;
     }
 
@@ -177,21 +190,32 @@ export function SigningFlow({ token }: SigningFlowProps) {
     setValidationError(null);
 
     try {
-      const resolvedFields = contract?.fields?.map((f) => {
-        if (f.type === 'INITIALS') {
-          return {
-            ...f,
-            value: signerInitials || signerName.split(' ').map((n) => n[0]).join('').toUpperCase() || 'IN',
-          };
+      const today = new Date().toISOString().split('T')[0];
+      const activeSigUrl =
+        signatureDataUrl ||
+        fields.find((f) => f.type === 'SIGNATURE' && f.value)?.value ||
+        null;
+
+      const signedSigField =
+        fields.find((f) => f.type === 'SIGNATURE' && f.value) ||
+        fields.find((f) => f.type === 'SIGNATURE');
+      const primaryDate = fields.find((f) => f.type === 'DATE');
+
+      // Resolve final fields ensuring DATE is populated
+      const resolvedFields = fields.map((f) => {
+        if (f.type === 'DATE' && !f.value) {
+          return { ...f, value: today };
         }
-        if (f.type === 'TEXT') {
-          return { ...f, value: textFieldsValues[f.id] || '' };
-        }
-        if (f.type === 'DATE') {
-          return { ...f, value: new Date().toISOString().split('T')[0] };
+        if (f.type === 'SIGNATURE' && !f.value && activeSigUrl) {
+          return { ...f, value: activeSigUrl };
         }
         return f;
       });
+
+      const activeInitialsUrl =
+        initialsDataUrl ||
+        fields.find((f) => f.type === 'INITIALS' && f.value)?.value ||
+        undefined;
 
       const res = await fetch('/api/contracts/finalize', {
         method: 'POST',
@@ -199,16 +223,26 @@ export function SigningFlow({ token }: SigningFlowProps) {
         body: JSON.stringify({
           token,
           clientName: signerName.trim(),
-          signatureDataUrl: activeSignatureDataUrl,
+          signatureDataUrl: activeSigUrl,
           signatureMethod,
-          page: placement.page,
-          signatureX: placement.signatureX,
-          signatureY: placement.signatureY,
-          nameX: placement.nameX,
-          nameY: placement.nameY,
-          dateX: placement.dateX,
-          dateY: placement.dateY,
+          page: signedSigField?.page || contract?.signaturePage || 1,
+          signatureX: signedSigField?.x ?? contract?.signatureX ?? 70,
+          signatureY: signedSigField?.y ?? contract?.signatureY ?? 115,
+          nameX: signedSigField?.x ?? contract?.nameX ?? 70,
+          nameY: Math.max((signedSigField?.y ?? contract?.signatureY ?? 115) - 18, 20),
+          dateX: primaryDate?.x ?? contract?.dateX ?? 70,
+          dateY: primaryDate?.y ?? contract?.dateY ?? 85,
+          placement: {
+            page: signedSigField?.page || contract?.signaturePage || 1,
+            signatureX: signedSigField?.x ?? contract?.signatureX ?? 70,
+            signatureY: signedSigField?.y ?? contract?.signatureY ?? 115,
+            nameX: signedSigField?.x ?? contract?.nameX ?? 70,
+            nameY: Math.max((signedSigField?.y ?? contract?.signatureY ?? 115) - 18, 20),
+            dateX: primaryDate?.x ?? contract?.dateX ?? 70,
+            dateY: primaryDate?.y ?? contract?.dateY ?? 85,
+          },
           fields: resolvedFields,
+          initialsDataUrl: activeInitialsUrl,
         }),
       });
 
@@ -281,6 +315,11 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
   if (!contract) return null;
 
+  const totalRequired = fields.filter((f) => f.required !== false).length;
+  const completedRequired = fields.filter((f) => f.required !== false && Boolean(f.value)).length;
+  const primarySigField = fields.find((f) => f.type === 'SIGNATURE');
+  const activeSigPreview = signatureDataUrl || primarySigField?.value || null;
+
   return (
     <div className="min-h-screen bg-white flex flex-col text-black">
       {/* Top Header with Trust Indicator */}
@@ -296,7 +335,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
         <div className="flex items-center space-x-2 text-xs text-neutral-600">
           <LockIcon className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Secure signing session</span>
+          <span className="hidden sm:inline">Secure in-situ signing session</span>
         </div>
       </header>
 
@@ -307,7 +346,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
 
       {/* Main Signing Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0">
-        {/* Step 1: Introduction */}
+        {/* Step 1: Introduction Screen */}
         {currentStep === 1 && (
           <div className="max-w-xl mx-auto my-auto w-full border border-neutral-300 p-8 text-center bg-white space-y-6">
             <div className="w-12 h-12 bg-neutral-100 border border-neutral-300 mx-auto flex items-center justify-center">
@@ -332,10 +371,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
                 Estimated Signing Steps:
               </div>
               <ol className="list-decimal list-inside space-y-1 text-neutral-700">
-                <li>Review the complete contract document</li>
-                <li>Provide your legal name and electronic signature</li>
-                <li>Position your signature interactively on the document</li>
-                <li>Review and execute the finalized contract</li>
+                <li>Review the complete contract document.</li>
+                <li>Tap directly on the designated signature target to ink your signature in-place.</li>
+                <li>Verify your details and finalize the legally binding agreement.</li>
               </ol>
             </div>
 
@@ -365,207 +403,30 @@ export function SigningFlow({ token }: SigningFlowProps) {
               className="w-full"
               onClick={() => setCurrentStep(2)}
             >
-              START REVIEWING
+              START REVIEWING & SIGNING →
             </Button>
           </div>
         )}
 
-        {/* Step 2: Contract Viewer Screen */}
+        {/* Step 2: In-Situ Document Signing (Approach B: Direct Tap-to-Ink) */}
         {currentStep === 2 && (
           <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:h-[calc(100vh-12rem)] lg:min-h-[460px] lg:max-h-[calc(100vh-12rem)]">
-            {/* Prominent PDF viewer */}
+            {/* Main Interactive In-Situ PDF Canvas */}
             <div className="lg:col-span-8 flex flex-col h-[65vh] lg:h-full min-h-0 overflow-hidden">
               {pdfBase64 ? (
-                <PdfViewer pdfBase64={pdfBase64} />
-              ) : (
-                <div className="flex-1 border border-neutral-300 flex items-center justify-center text-xs text-neutral-500">
-                  Document preview unavailable.
-                </div>
-              )}
-            </div>
-
-            {/* Sidebar Instructions & Action */}
-            <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-6">
-              <div className="space-y-4">
-                <div className="border-b border-neutral-200 pb-3">
-                  <h2 className="text-base font-bold text-black">Step 2 of 5: Review Document</h2>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Please read through the agreement. You can zoom in and navigate through the pages.
-                  </p>
-                </div>
-
-                <div className="text-xs space-y-2 text-neutral-600">
-                  <p>• Make sure you agree to all specifications and terms.</p>
-                  <p>• When you are ready, continue below to add your signature.</p>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-neutral-200 space-y-3">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleProceedToSignature}
-                >
-                  CONTINUE TO SIGNATURE →
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(1)}
-                  className="w-full text-xs text-neutral-600 hover:text-black underline text-center cursor-pointer"
-                >
-                  ← Back to Start
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Information & Signature Screen */}
-        {currentStep === 3 && (
-          <div className="max-w-2xl mx-auto w-full border border-neutral-300 p-6 sm:p-8 bg-white space-y-6">
-            <div className="border-b border-neutral-200 pb-4">
-              <h2 className="text-lg font-bold text-black">Step 3 of 5: Create Your Signature</h2>
-              <p className="text-xs text-neutral-500 mt-1">
-                Enter your full legal name and choose whether you would like to draw or type your signature.
-              </p>
-            </div>
-
-            {/* Full Name input */}
-            <Input
-              label="Your Full Legal Name"
-              required
-              value={signerName}
-              onChange={(e) => setSignerName(e.target.value)}
-              placeholder="Juan Dela Cruz"
-              helperText="Enter your name as you want it recorded on the signed agreement."
-            />
-
-            {/* Signature Method Tabs */}
-            <div className="space-y-3 pt-2">
-              <label className="text-sm font-semibold text-black block">Your Signature</label>
-              <div className="flex border-b border-neutral-300">
-                <button
-                  type="button"
-                  onClick={() => setSignatureMethod('DRAW')}
-                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
-                    signatureMethod === 'DRAW'
-                      ? 'border-black text-black'
-                      : 'border-transparent text-neutral-500 hover:text-black'
-                  }`}
-                >
-                  Draw with Mouse / Finger
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSignatureMethod('TYPE')}
-                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
-                    signatureMethod === 'TYPE'
-                      ? 'border-black text-black'
-                      : 'border-transparent text-neutral-500 hover:text-black'
-                  }`}
-                >
-                  Type Signature
-                </button>
-              </div>
-
-              {signatureMethod === 'DRAW' ? (
-                <SignaturePad onSignatureChange={setDrawnSignatureDataUrl} />
-              ) : (
-                <TypedSignature
-                  name={signerName}
-                  onSignatureGenerated={setTypedSignatureDataUrl}
-                />
-              )}
-            </div>
-
-            {/* Initials Input (if contract has initials fields) */}
-            {contract?.fields?.some((f) => f.type === 'INITIALS') && (
-              <div className="pt-2 border-t border-neutral-100">
-                <Input
-                  label="Your Legal Initials"
-                  required
-                  value={signerInitials}
-                  onChange={(e) => setSignerInitials(e.target.value.toUpperCase())}
-                  placeholder="JD"
-                  helperText="Stamped on document margin/initials lines."
-                />
-              </div>
-            )}
-
-            {/* Additional Text Inputs (if contract has text fields) */}
-            {contract?.fields?.some((f) => f.type === 'TEXT') && (
-              <div className="pt-2 border-t border-neutral-100 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-black">Additional Document Details</h4>
-                {contract.fields
-                  .filter((f) => f.type === 'TEXT')
-                  .map((field) => (
-                    <Input
-                      key={field.id}
-                      label={field.label || 'Additional Detail'}
-                      value={textFieldsValues[field.id] || ''}
-                      onChange={(e) =>
-                        setTextFieldsValues((prev) => ({ ...prev, [field.id]: e.target.value }))
-                      }
-                      placeholder="e.g. Title / Organization"
-                    />
-                  ))}
-              </div>
-            )}
-
-            {validationError && (
-              <div className="p-3 border border-black bg-neutral-50 text-xs font-medium text-black" role="alert">
-                <span className="font-bold underline mr-1">Please note:</span>
-                {validationError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-6 border-t border-neutral-200">
-              <Button variant="outline" onClick={() => setCurrentStep(2)}>
-                ← Back to Document
-              </Button>
-              <Button variant="primary" onClick={handleProceedToPlacement}>
-                CONTINUE TO PLACEMENT →
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Visual Signature Placement Screen */}
-        {currentStep === 4 && (
-          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:h-[calc(100vh-12rem)] lg:min-h-[460px] lg:max-h-[calc(100vh-12rem)]">
-            {/* Prominent PDF viewer with Draggable Signature Badge */}
-            <div className="lg:col-span-8 flex flex-col h-[65vh] lg:h-full min-h-0 overflow-hidden">
-              {pdfBase64 && activeSignatureDataUrl ? (
                 <SignaturePlacementViewer
                   pdfBase64={pdfBase64}
-                  signatureDataUrl={activeSignatureDataUrl}
+                  fields={fields}
+                  onFieldsChange={setFields}
                   signerName={signerName}
-                  placement={placement}
-                  onPlacementChange={setPlacement}
+                  onSignerNameChange={setSignerName}
+                  signatureDataUrl={signatureDataUrl}
+                  onSignatureChange={setSignatureDataUrl}
+                  initialsDataUrl={initialsDataUrl}
+                  onInitialsChange={setInitialsDataUrl}
+                  signatureMethod={signatureMethod}
+                  onSignatureMethodChange={setSignatureMethod}
                   defaultPlacementPage={contract.signaturePage}
-                  fields={contract.fields?.map((f) => {
-                    if (f.type === 'INITIALS') {
-                      return {
-                        ...f,
-                        value:
-                          signerInitials ||
-                          signerName
-                            .split(' ')
-                            .map((n) => n[0])
-                            .join('')
-                            .toUpperCase() ||
-                          'IN',
-                      };
-                    }
-                    if (f.type === 'TEXT') {
-                      return { ...f, value: textFieldsValues[f.id] || '' };
-                    }
-                    if (f.type === 'DATE') {
-                      return { ...f, value: new Date().toISOString().split('T')[0] };
-                    }
-                    return f;
-                  })}
                 />
               ) : (
                 <div className="flex-1 border border-neutral-300 flex items-center justify-center text-xs text-neutral-500 bg-neutral-50">
@@ -574,78 +435,104 @@ export function SigningFlow({ token }: SigningFlowProps) {
               )}
             </div>
 
-            {/* Sidebar Instructions & Controls */}
-            <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-6">
-              <div className="space-y-4">
-                <div className="border-b border-neutral-200 pb-3">
-                  <h2 className="text-base font-bold text-black">Step 4 of 5: Place Your Signature</h2>
-                  <p className="text-xs text-neutral-500 mt-1">
-                    Drag the signature box onto the signature line on the document, or tap anywhere to place it.
-                  </p>
+            {/* Sidebar Guide & Action Panel */}
+            <div className="lg:col-span-4 flex flex-col border border-neutral-300 p-6 bg-neutral-50 lg:self-start lg:sticky lg:top-4 lg:max-h-full lg:overflow-y-auto space-y-5">
+              <div className="border-b border-neutral-200 pb-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-bold text-black">Step 2 of 3: Review & Sign</h2>
+                  <span className="text-[10px] font-mono bg-black text-white px-1.5 py-0.5 uppercase">
+                    Tap-to-Ink
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 mt-1">
+                  Tap directly on the highlighted boxes on the document to apply your signature.
+                </p>
+              </div>
+
+              {/* Legal Signer Name Field */}
+              <div>
+                <Input
+                  label="Signer Legal Full Name"
+                  required
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  placeholder="e.g. Juan Dela Cruz"
+                  helperText="Your legal name as recorded on the executed agreement."
+                />
+              </div>
+
+              {/* In-Situ Progress Checklist */}
+              <div className="p-3 bg-white border border-neutral-300 text-xs space-y-2">
+                <div className="font-semibold text-black uppercase tracking-wider text-[11px] flex items-center justify-between">
+                  <span>Document Signing Checklist</span>
+                  <span className="text-[10px] font-mono bg-neutral-100 border border-neutral-300 px-1.5 py-0.5">
+                    {completedRequired} / {totalRequired || fields.length} Done
+                  </span>
                 </div>
 
-                {/* Placement Feedback Card */}
-                <div className="p-3 bg-white border border-neutral-300 text-xs space-y-2">
-                  <div className="font-semibold text-black uppercase tracking-wider text-[11px] flex items-center justify-between">
-                    <span>Signature Placement</span>
-                    <div className="flex items-center gap-1.5">
-                      {contract.signaturePage !== undefined && (
-                        <span className="text-[9px] bg-black text-white px-1.5 py-0.5 font-sans font-bold">
-                          Pre-Set by Sender
+                <div className="space-y-1.5 pt-1">
+                  {fields.map((f) => {
+                    const isDone = Boolean(f.value);
+                    return (
+                      <div
+                        key={f.id}
+                        className="flex items-center justify-between text-xs py-1 border-b border-neutral-100 last:border-0"
+                      >
+                        <span className="text-neutral-700 font-medium">
+                          {f.label || f.type} (P.{f.page})
                         </span>
-                      )}
-                      <span className="text-[10px] bg-neutral-100 border border-neutral-300 px-1.5 py-0.5 font-mono">
-                        Page {placement.page}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-neutral-700 font-mono text-[11px] pt-1">
-                    <div>X-Coord: <strong className="text-black font-sans">{placement.signatureX} pt</strong></div>
-                    <div>Y-Coord: <strong className="text-black font-sans">{placement.signatureY} pt</strong></div>
-                  </div>
-                  <p className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-100 leading-tight">
-                    {contract.signaturePage !== undefined
-                      ? 'The sender suggested this spot. You can keep it or drag it to fine-tune.'
-                      : 'Your electronic signature will appear cleanly at this exact location.'}
-                  </p>
-                </div>
-
-                <div className="text-xs space-y-2 text-neutral-600">
-                  <p>• <strong>Drag to position:</strong> Click and drag the signature box with your mouse or finger.</p>
-                  <p>• <strong>Tap to place:</strong> Tap directly on any signature line to jump your signature there.</p>
-                  <p>• <strong>Page navigation:</strong> Use the toolbar arrows to place your signature on another page.</p>
-                  <p>• <strong>Arrow keys:</strong> Use your keyboard arrows for fine millimeter adjustments.</p>
+                        <span
+                          className={`font-mono text-[10px] font-bold px-1.5 py-0.5 ${
+                            isDone
+                              ? 'bg-black text-white'
+                              : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                          }`}
+                        >
+                          {isDone ? '✓ SIGNED' : '✍ PENDING'}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-neutral-200 space-y-3">
+              {validationError && (
+                <div className="p-3 border border-black bg-neutral-50 text-xs font-medium text-black" role="alert">
+                  <span className="font-bold underline mr-1">Please note:</span>
+                  {validationError}
+                </div>
+              )}
+
+              {/* Proceed Action Button */}
+              <div className="pt-2 border-t border-neutral-200 space-y-3">
                 <Button
                   variant="primary"
                   size="lg"
                   className="w-full"
-                  onClick={() => setCurrentStep(5)}
+                  onClick={handleProceedToFinalReview}
                 >
-                  CONTINUE TO REVIEW →
+                  CONTINUE TO CONFIRM & EXECUTE →
                 </Button>
+
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(3)}
+                  onClick={() => setCurrentStep(1)}
                   className="w-full text-xs text-neutral-600 hover:text-black underline text-center cursor-pointer"
                 >
-                  ← Back to Signature
+                  ← Back to Overview
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Step 5: Final Review & Confirmation */}
-        {currentStep === 5 && (
+        {/* Step 3: Final Review & Confirmation */}
+        {currentStep === 3 && (
           <div className="max-w-2xl mx-auto w-full border border-neutral-300 p-6 sm:p-8 bg-white space-y-6">
             <div className="border-b border-neutral-200 pb-4">
-              <h2 className="text-lg font-bold text-black">Step 5 of 5: Final Review & Confirm</h2>
+              <h2 className="text-lg font-bold text-black">Step 3 of 3: Final Review & Confirm</h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Please double check your details and confirm your agreement to finalize signing.
+                Please double check your details and confirm your electronic agreement to finalize execution.
               </p>
             </div>
 
@@ -661,31 +548,33 @@ export function SigningFlow({ token }: SigningFlowProps) {
               <div>
                 <span className="text-neutral-500 font-medium block">Signature Method:</span>
                 <span className="text-neutral-800">
-                  {signatureMethod === 'DRAW' ? 'Handwritten Canvas' : 'Typed Electronic Representation'}
+                  {signatureMethod === 'DRAW' ? 'Handwritten Touch / Ink Canvas' : 'Typed Calligraphic Representation'}
                 </span>
               </div>
               <div>
-                <span className="text-neutral-500 font-medium block">Signature Placement:</span>
+                <span className="text-neutral-500 font-medium block">Fields Executed:</span>
                 <span className="font-mono text-neutral-800">
-                  Page {placement.page} &bull; Coordinates: ({placement.signatureX} pt, {placement.signatureY} pt)
+                  {fields.length} document fields bound in-situ directly on the document.
                 </span>
               </div>
               <div>
-                <span className="text-neutral-500 font-medium block mb-1">Signature Preview:</span>
+                <span className="text-neutral-500 font-medium block mb-1">Applied Signature Preview:</span>
                 <div className="h-24 border border-neutral-300 bg-white flex items-center justify-center p-2">
-                  {activeSignatureDataUrl && (
+                  {activeSigPreview ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={activeSignatureDataUrl}
+                      src={activeSigPreview}
                       alt="Signature preview"
                       className="max-h-full max-w-full object-contain"
                     />
+                  ) : (
+                    <span className="text-xs text-neutral-400">Signature not recorded</span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Tamper-Evident Seal & Certificate of Completion Details */}
+            {/* Tamper-Evident Seal & Legal Audit Record callout */}
             <div className="p-4 border border-black bg-white space-y-3">
               <div className="flex items-center space-x-2 border-b border-neutral-200 pb-2">
                 <span className="w-2.5 h-2.5 bg-black" />
@@ -707,7 +596,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   <span className="font-bold text-black font-mono">02.</span>
                   <div>
                     <span className="font-semibold text-black block">Embedded Verification Record</span>
-                    <span className="text-[11px] text-neutral-500">Signer telemetry, contract ID, and compliance metadata are embedded directly inside the file.</span>
+                    <span className="text-[11px] text-neutral-500">Signer telemetry, UTC timestamp, and compliance metadata are embedded directly inside the file.</span>
                   </div>
                 </div>
               </div>
@@ -737,7 +626,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
                   >
                     Consumer Electronic Record & Signature Disclosure
                   </button>
-                  . I confirm that I have reviewed the contract, placed my signature at the designated location, and intend for this electronic signature to be legally binding under the ESIGN Act and UETA.
+                  . I confirm that I have reviewed the contract, applied my signature at the designated location, and intend for this electronic signature to be legally binding under the ESIGN Act and UETA.
                 </span>
               </label>
             </div>
@@ -750,8 +639,8 @@ export function SigningFlow({ token }: SigningFlowProps) {
             )}
 
             <div className="flex items-center justify-between pt-6 border-t border-neutral-200">
-              <Button variant="outline" onClick={() => setCurrentStep(4)}>
-                ← Adjust Placement
+              <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                ← Back to Document
               </Button>
               <Button
                 variant="primary"
@@ -781,7 +670,7 @@ export function SigningFlow({ token }: SigningFlowProps) {
       >
         <div className="space-y-4">
           <p className="text-sm text-neutral-700">
-            You are about to complete and sign this agreement. Your electronic signature will be placed onto the document, and a verified signed copy will be generated.
+            You are about to complete and sign this agreement. Your electronic signature will be placed onto the document in-place, and a verified signed copy will be generated.
           </p>
 
           <div className="p-3 bg-neutral-50 border border-neutral-200 text-xs space-y-1">
