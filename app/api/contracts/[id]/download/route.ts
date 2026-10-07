@@ -3,6 +3,14 @@ import { getContractById } from '@/lib/firebase/service';
 import { getContractFileBuffer } from '@/lib/firebase/storage';
 import { getAdminSession } from '@/lib/auth/session';
 
+function isContractOwner(session: { userId?: string; email: string }, contract: { userId?: string; ownerEmail?: string }): boolean {
+  if (session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app')) return true;
+  if (!contract.userId && !contract.ownerEmail) return true;
+  if (contract.userId && session.userId && contract.userId === session.userId) return true;
+  if (contract.ownerEmail && contract.ownerEmail.toLowerCase() === session.email.toLowerCase()) return true;
+  return false;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -17,11 +25,12 @@ export async function GET(
     return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
   }
 
-  // Authorization check: either admin session or token query matches
+  // Authorization check: either authorized contract owner session or client token query matches
   const session = await getAdminSession();
-  const isAuthorized = session !== null || (token && contract.signingTokenHash === token);
+  const isOwnerSession = session !== null && isContractOwner(session, contract);
+  const isTokenClient = Boolean(token && contract.signingTokenHash === token);
 
-  if (!isAuthorized) {
+  if (!isOwnerSession && !isTokenClient) {
     return NextResponse.json({ error: 'Unauthorized to download this file' }, { status: 401 });
   }
 

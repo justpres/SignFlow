@@ -18,6 +18,23 @@ export interface PlacedField {
   signerRole?: 'CLIENT' | 'SENDER';
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  photoUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface UserSession {
+  userId: string;
+  email: string;
+  name: string;
+  photoUrl?: string;
+  authenticatedAt: number;
+}
+
 export interface ContractTemplate {
   id: string;
   title: string;
@@ -29,6 +46,9 @@ export interface ContractTemplate {
   signatureX?: number;
   signatureY?: number;
   requiresCounterSign?: boolean;
+  userId?: string;
+  ownerEmail?: string;
+  ownerName?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -42,6 +62,9 @@ export interface Contract {
   clientEmail: string;
   status: ContractStatus;
   signingTokenHash: string;
+  userId?: string;
+  ownerEmail?: string;
+  ownerName?: string;
   createdAt: string;
   openedAt?: string;
   signedAt?: string;

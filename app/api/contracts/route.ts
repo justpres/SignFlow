@@ -11,7 +11,10 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const contracts = await getAllContracts();
+  const isGlobalAdmin = session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app');
+  const contracts = isGlobalAdmin
+    ? await getAllContracts()
+    : await getAllContracts(session.userId, session.email);
   return NextResponse.json({ contracts });
 }
 
@@ -94,6 +97,9 @@ export async function POST(request: Request) {
         status: 'DRAFT',
         originalFilePath: fileBuffer ? originalStoragePath : (existingContract?.originalFilePath || ''),
         signingTokenHash: '',
+        userId: existingContract?.userId || session.userId,
+        ownerEmail: existingContract?.ownerEmail || session.email,
+        ownerName: existingContract?.ownerName || session.name,
         createdAt: existingContract ? existingContract.createdAt : new Date().toISOString(),
         expiresAt: new Date(expiresAt).toISOString(),
         contractVersion: (existingContract?.contractVersion || 0) + 1,
@@ -151,6 +157,9 @@ export async function POST(request: Request) {
       status: 'SENT',
       originalFilePath: originalStoragePath,
       signingTokenHash,
+      userId: existingContract?.userId || session.userId,
+      ownerEmail: existingContract?.ownerEmail || session.email,
+      ownerName: existingContract?.ownerName || session.name,
       createdAt: existingContract ? existingContract.createdAt : new Date().toISOString(),
       expiresAt: new Date(expiresAt).toISOString(),
       contractVersion: (existingContract?.contractVersion || 0) + 1,

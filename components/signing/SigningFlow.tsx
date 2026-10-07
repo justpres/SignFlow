@@ -14,6 +14,8 @@ interface ContractData {
   title: string;
   clientName: string;
   clientEmail: string;
+  ownerEmail?: string;
+  ownerName?: string;
   status: string;
   expiresAt: string;
   signedAt?: string;
@@ -348,6 +350,12 @@ export function SigningFlow({ token }: SigningFlowProps) {
           <span className="text-[11px] sm:text-xs text-neutral-700 font-medium truncate max-w-[100px] xs:max-w-[130px] sm:max-w-xs" title={contract.title}>
             {contract.title}
           </span>
+          {(contract.ownerName || contract.ownerEmail) && (
+            <span className="hidden lg:inline-flex items-center space-x-1 px-2 py-0.5 bg-neutral-100 border border-neutral-200 text-neutral-600 text-[10px] shrink-0">
+              <span>Sent by:</span>
+              <strong className="text-black font-semibold">{contract.ownerName || contract.ownerEmail}</strong>
+            </span>
+          )}
           {signatureDataUrl && (
             <span className="hidden sm:inline-flex items-center space-x-1 px-1.5 py-0.5 bg-neutral-100 border border-neutral-300 text-black text-[10px] font-mono font-bold tracking-wider uppercase shrink-0">
               <CheckIcon className="w-3 h-3 text-black" />
@@ -376,6 +384,16 @@ export function SigningFlow({ token }: SigningFlowProps) {
           </div>
         </div>
       </header>
+
+      {/* Sender Identity Subheader on smaller screens */}
+      {(contract.ownerName || contract.ownerEmail) && (
+        <div className="lg:hidden flex-shrink-0 bg-neutral-50 border-b border-neutral-200 px-3 py-1 text-[11px] text-neutral-600 flex items-center justify-between">
+          <span>Contract sent by: <strong className="text-black">{contract.ownerName || contract.ownerEmail}</strong></span>
+          {contract.ownerEmail && (
+            <span className="text-[10px] text-neutral-400 font-mono truncate max-w-[130px]">{contract.ownerEmail}</span>
+          )}
+        </div>
+      )}
 
       {/* Validation Banner if user tried to complete without signing */}
       {validationError && !showAreYouSureModal && (
@@ -418,6 +436,17 @@ export function SigningFlow({ token }: SigningFlowProps) {
         maxWidth="sm"
       >
         <div className="space-y-3.5 text-black text-xs font-sans">
+          {/* Sender Identity Info */}
+          {(contract.ownerName || contract.ownerEmail) && (
+            <div className="p-2.5 bg-neutral-50 border border-neutral-200 text-[11px] text-neutral-700">
+              <span className="text-neutral-500">Contract sent by: </span>
+              <strong className="text-black font-semibold">{contract.ownerName || contract.ownerEmail}</strong>
+              {contract.ownerEmail && contract.ownerName && (
+                <span className="text-neutral-400 font-mono text-[10px] ml-1">({contract.ownerEmail})</span>
+              )}
+            </div>
+          )}
+
           {/* Signer Legal Name Input */}
           <div>
             <label htmlFor="modal-signer-name" className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 block mb-1">

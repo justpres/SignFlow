@@ -1,4 +1,4 @@
-import type { Contract, AuditLog, AuditAction, ContractTemplate } from '../types/index.ts';
+import type { Contract, AuditLog, AuditAction, ContractTemplate, User } from '../types/index.ts';
 import { getAdminDb } from './admin.ts';
 import fs from 'fs';
 import path from 'path';
@@ -10,6 +10,7 @@ const LOCAL_DATA_DIR = process.env.VERCEL
 const CONTRACTS_FILE = path.join(LOCAL_DATA_DIR, 'contracts.json');
 const AUDITS_FILE = path.join(LOCAL_DATA_DIR, 'audits.json');
 const TEMPLATES_FILE = path.join(LOCAL_DATA_DIR, 'templates.json');
+const USERS_FILE = path.join(LOCAL_DATA_DIR, 'users.json');
 export const LOCAL_STORAGE_DIR = path.join(LOCAL_DATA_DIR, 'storage');
 
 function ensureLocalDirs() {
@@ -27,6 +28,9 @@ function ensureLocalDirs() {
   }
   if (!fs.existsSync(TEMPLATES_FILE)) {
     fs.writeFileSync(TEMPLATES_FILE, JSON.stringify([]));
+  }
+  if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, JSON.stringify([]));
   }
 }
 
@@ -75,6 +79,62 @@ function writeLocalAudits(audits: AuditLog[]) {
   fs.writeFileSync(AUDITS_FILE, JSON.stringify(audits, null, 2));
 }
 
+function readLocalUsers(): User[] {
+  ensureLocalDirs();
+  try {
+    const raw = fs.readFileSync(USERS_FILE, 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalUsers(users: User[]) {
+  ensureLocalDirs();
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
+export async function saveUser(user: User): Promise<void> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    const cleanData = JSON.parse(JSON.stringify(user));
+    await adminDb.collection('users').doc(user.id).set(cleanData);
+  } else {
+    const users = readLocalUsers();
+    const idx = users.findIndex(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], ...user, updatedAt: new Date().toISOString() };
+    } else {
+      users.push(user);
+    }
+    writeLocalUsers(users);
+  }
+}
+
+export async function getUserById(id: string): Promise<User | null> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    const doc = await adminDb.collection('users').doc(id).get();
+    if (!doc.exists) return null;
+    return doc.data() as User;
+  } else {
+    const users = readLocalUsers();
+    return users.find(u => u.id === id) || null;
+  }
+}
+
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const adminDb = getAdminDb();
+  if (adminDb) {
+    const snap = await adminDb.collection('users').where('email', '==', email.toLowerCase()).limit(1).get();
+    if (snap.empty) return null;
+    return snap.docs[0].data() as User;
+  } else {
+    const users = readLocalUsers();
+    return users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+  }
+}
+
 export async function saveContract(contract: Contract): Promise<void> {
   const adminDb = getAdminDb();
   if (adminDb) {
@@ -116,14 +176,28 @@ export async function getContractByTokenHash(tokenHash: string): Promise<Contrac
   }
 }
 
-export async function getAllContracts(): Promise<Contract[]> {
+export async function getAllContracts(userId?: string, ownerEmail?: string): Promise<Contract[]> {
   const adminDb = getAdminDb();
   if (adminDb) {
-    const snap = await adminDb.collection('contracts').orderBy('createdAt', 'desc').get();
-    return snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+    if (userId) {
+      const snap = await adminDb.collection('contracts').where('userId', '==', userId).get();
+      let list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+      if (list.length === 0 && ownerEmail) {
+        const emailSnap = await adminDb.collection('contracts').where('ownerEmail', '==', ownerEmail).get();
+        list = emailSnap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+      }
+      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else {
+      const snap = await adminDb.collection('contracts').get();
+      const list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as Contract);
+      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
   } else {
     const contracts = readLocalContracts();
-    return contracts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const filtered = userId
+      ? contracts.filter(c => c.userId === userId || (ownerEmail && c.ownerEmail?.toLowerCase() === ownerEmail.toLowerCase()))
+      : contracts;
+    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 }
 
@@ -226,14 +300,28 @@ export async function getTemplateById(id: string): Promise<ContractTemplate | nu
   }
 }
 
-export async function getAllTemplates(): Promise<ContractTemplate[]> {
+export async function getAllTemplates(userId?: string, ownerEmail?: string): Promise<ContractTemplate[]> {
   const adminDb = getAdminDb();
   if (adminDb) {
-    const snap = await adminDb.collection('templates').orderBy('createdAt', 'desc').get();
-    return snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+    if (userId) {
+      const snap = await adminDb.collection('templates').where('userId', '==', userId).get();
+      let list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+      if (list.length === 0 && ownerEmail) {
+        const emailSnap = await adminDb.collection('templates').where('ownerEmail', '==', ownerEmail).get();
+        list = emailSnap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+      }
+      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else {
+      const snap = await adminDb.collection('templates').get();
+      const list = snap.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => doc.data() as ContractTemplate);
+      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
   } else {
     const templates = readLocalTemplates();
-    return templates.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const filtered = userId
+      ? templates.filter(t => t.userId === userId || (ownerEmail && t.ownerEmail?.toLowerCase() === ownerEmail.toLowerCase()))
+      : templates;
+    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 }
 

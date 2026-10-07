@@ -11,6 +11,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "SignFlow | Secure Online Contract Signing",
   description: "A focused, professional online contract signing platform with zero friction and enterprise-grade audit integrity.",
+  icons: {
+    icon: "/esayn_ico.ico",
+  },
 };
 
 export default function RootLayout({

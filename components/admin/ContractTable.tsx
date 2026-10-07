@@ -37,7 +37,12 @@ export function ContractTable({ contracts, onCopyLink: _onCopyLink, onRevoke, on
                   >
                     {contract.title || 'Untitled Draft'}
                   </Link>
-                  <div className="text-xs font-mono text-neutral-400 mt-0.5">{contract.id}</div>
+                  <div className="text-xs font-mono text-neutral-400 mt-0.5">
+                    {contract.id}
+                    {contract.ownerEmail && (
+                      <span className="text-neutral-500 font-sans ml-1.5">• by {contract.ownerName || contract.ownerEmail}</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4">
                   <div className="text-neutral-900 font-medium">
@@ -150,7 +155,12 @@ export function ContractTable({ contracts, onCopyLink: _onCopyLink, onRevoke, on
                 >
                   {contract.title || 'Untitled Draft'}
                 </Link>
-                <div className="text-xs font-mono text-neutral-400 mt-0.5">{contract.id}</div>
+                <div className="text-xs font-mono text-neutral-400 mt-0.5">
+                  {contract.id}
+                  {contract.ownerEmail && (
+                    <span className="text-neutral-500 font-sans ml-1.5">• by {contract.ownerName || contract.ownerEmail}</span>
+                  )}
+                </div>
               </div>
               <StatusBadge status={contract.status} />
             </div>

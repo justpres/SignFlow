@@ -9,7 +9,10 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const templates = await getAllTemplates();
+  const isGlobalAdmin = session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app');
+  const templates = isGlobalAdmin
+    ? await getAllTemplates()
+    : await getAllTemplates(session.userId, session.email);
   return NextResponse.json({ templates });
 }
 
@@ -39,6 +42,9 @@ export async function POST(request: Request) {
       signatureX: signatureX !== undefined ? Number(signatureX) : undefined,
       signatureY: signatureY !== undefined ? Number(signatureY) : undefined,
       requiresCounterSign: Boolean(requiresCounterSign),
+      userId: session.userId,
+      ownerEmail: session.email,
+      ownerName: session.name,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

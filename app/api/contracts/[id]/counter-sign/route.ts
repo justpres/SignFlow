@@ -4,6 +4,14 @@ import { getContractFileBuffer, uploadContractFile } from '@/lib/firebase/storag
 import { generateSignedPdf } from '@/lib/pdf/generator';
 import { getAdminSession } from '@/lib/auth/session';
 
+function isContractOwner(session: { userId?: string; email: string }, contract: { userId?: string; ownerEmail?: string }): boolean {
+  if (session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app')) return true;
+  if (!contract.userId && !contract.ownerEmail) return true;
+  if (contract.userId && session.userId && contract.userId === session.userId) return true;
+  if (contract.ownerEmail && contract.ownerEmail.toLowerCase() === session.email.toLowerCase()) return true;
+  return false;
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,6 +26,10 @@ export async function POST(
 
   if (!contract) {
     return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+  }
+
+  if (!isContractOwner(session, contract)) {
+    return NextResponse.json({ error: 'Forbidden: You do not have permission to counter-sign this contract' }, { status: 403 });
   }
 
   if (contract.status !== 'WAITING_COUNTER_SIGN') {
@@ -36,7 +48,7 @@ export async function POST(
     }
 
     const nowIso = new Date().toISOString();
-    const adminSignerName = counterSignerName || session.email || 'SignFlow Administrator';
+    const adminSignerName = counterSignerName || session.name || session.email || 'SignFlow Administrator';
 
     // Retrieve original contract PDF
     let originalPdfBuffer = await getContractFileBuffer(contract.originalFilePath);

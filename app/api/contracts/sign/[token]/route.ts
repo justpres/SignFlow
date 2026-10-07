@@ -56,6 +56,8 @@ export async function GET(
       title: contract.title,
       clientName: contract.clientName,
       clientEmail: contract.clientEmail,
+      ownerEmail: contract.ownerEmail,
+      ownerName: contract.ownerName,
       status: contract.status,
       expiresAt: contract.expiresAt,
       signedAt: contract.signedAt,

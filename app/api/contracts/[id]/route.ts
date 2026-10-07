@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { getContractById, saveContract, addAuditLog, getAuditLogsForContract, deleteContract } from '@/lib/firebase/service';
 import { getAdminSession } from '@/lib/auth/session';
 
+function isContractOwner(session: { userId?: string; email: string }, contract: { userId?: string; ownerEmail?: string }): boolean {
+  if (session.email === (process.env.ADMIN_EMAIL || 'admin@signflow.app')) return true;
+  if (!contract.userId && !contract.ownerEmail) return true;
+  if (contract.userId && session.userId && contract.userId === session.userId) return true;
+  if (contract.ownerEmail && contract.ownerEmail.toLowerCase() === session.email.toLowerCase()) return true;
+  return false;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -15,6 +23,10 @@ export async function GET(
   const contract = await getContractById(id);
   if (!contract) {
     return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+  }
+
+  if (!isContractOwner(session, contract)) {
+    return NextResponse.json({ error: 'Forbidden: You do not have permission to view this contract' }, { status: 403 });
   }
 
   const auditLogs = await getAuditLogsForContract(id);
@@ -34,6 +46,10 @@ export async function PATCH(
   const contract = await getContractById(id);
   if (!contract) {
     return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+  }
+
+  if (!isContractOwner(session, contract)) {
+    return NextResponse.json({ error: 'Forbidden: You do not have permission to modify this contract' }, { status: 403 });
   }
 
   const body = await request.json();
@@ -66,6 +82,10 @@ export async function DELETE(
   const contract = await getContractById(id);
   if (!contract) {
     return NextResponse.json({ error: 'Contract not found' }, { status: 404 });
+  }
+
+  if (!isContractOwner(session, contract)) {
+    return NextResponse.json({ error: 'Forbidden: You do not have permission to delete this contract' }, { status: 403 });
   }
 
   await deleteContract(id);
