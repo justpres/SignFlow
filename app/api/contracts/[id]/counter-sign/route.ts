@@ -100,6 +100,9 @@ export async function POST(
       counterSignerName: adminSignerName,
       counterSignedAtDate: nowIso,
       counterSignPlacement: contract.counterSignPlacement,
+      requiresGovId: contract.requiresGovId,
+      govIdType: contract.govIdType,
+      govIdPhotoBase64: contract.govIdPhotoBase64,
     });
 
     const signedStoragePath = `contracts/${contract.id}/signed.pdf`;

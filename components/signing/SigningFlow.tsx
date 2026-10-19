@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { LockIcon, WarningIcon, CheckIcon } from '@/components/ui/Icons';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-import { PlacedField } from '@/lib/types';
+import { PlacedField, PHILIPPINE_GOV_ID_TYPES } from '@/lib/types';
 
 interface ContractData {
   id: string;
@@ -30,6 +30,8 @@ interface ContractData {
   dateY?: number;
   fields?: PlacedField[];
   requiresCounterSign?: boolean;
+  requiresGovId?: boolean;
+  govIdType?: string;
 }
 
 interface SigningFlowProps {
@@ -58,9 +60,76 @@ export function SigningFlow({ token }: SigningFlowProps) {
   const [showAreYouSureModal, setShowAreYouSureModal] = useState<boolean>(false);
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(false);
   const [showDisclosureModal, setShowDisclosureModal] = useState<boolean>(false);
+  const [returnToConfirmModal, setReturnToConfirmModal] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
   const [isWaitingCounterSign, setIsWaitingCounterSign] = useState<boolean>(false);
+
+  // Philippine Government ID verification state
+  const [selectedGovIdType, setSelectedGovIdType] = useState<string>('PhilSys National ID');
+  const [govIdPhotoBase64, setGovIdPhotoBase64] = useState<string | null>(null);
+  const [isCompressingId, setIsCompressingId] = useState<boolean>(false);
+  const [govIdError, setGovIdError] = useState<string | null>(null);
+
+  const compressGovIdImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Failed to read image file'));
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas context not available'));
+            return;
+          }
+
+          const maxDimension = 1280;
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Quality 0.75 yields high clarity compressed JPEG (<300KB)
+          const compressed = canvas.toDataURL('image/jpeg', 0.75);
+          resolve(compressed);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleGovIdCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressingId(true);
+    setGovIdError(null);
+    try {
+      const compressed = await compressGovIdImage(file);
+      setGovIdPhotoBase64(compressed);
+    } catch (err) {
+      console.error('ID compression error:', err);
+      setGovIdError('Could not process image. Please try another photo.');
+    } finally {
+      setIsCompressingId(false);
+    }
+  };
 
   // Final Success State
   const [finalSuccessData, setFinalSuccessData] = useState<{
@@ -103,6 +172,9 @@ export function SigningFlow({ token }: SigningFlowProps) {
       setContract(data.contract);
       setPdfBase64(data.pdfBase64);
       setSignerName(data.contract.clientName || '');
+      if (data.contract.govIdType) {
+        setSelectedGovIdType(data.contract.govIdType);
+      }
     } catch {
       setFetchError('ERROR');
     } finally {
@@ -161,6 +233,10 @@ export function SigningFlow({ token }: SigningFlowProps) {
     if (!signatureDataUrl) {
       setValidationError('Signature is missing. Please draw your signature before finalizing.');
       setShowAreYouSureModal(false);
+      return;
+    }
+    if (contract?.requiresGovId && !govIdPhotoBase64) {
+      setValidationError('Please photograph or upload your Philippine Government ID specimen before completing.');
       return;
     }
 
@@ -268,6 +344,8 @@ export function SigningFlow({ token }: SigningFlowProps) {
             dateY: contract?.dateY ?? Math.max(targetSigY - 35, 20),
           },
           fields: submissionFields,
+          govIdType: contract?.requiresGovId ? selectedGovIdType : undefined,
+          govIdPhotoBase64: contract?.requiresGovId ? govIdPhotoBase64 : undefined,
         }),
       });
 
@@ -399,6 +477,31 @@ export function SigningFlow({ token }: SigningFlowProps) {
         </div>
       )}
 
+      {/* Philippine Statutory Validity & Trust Banner */}
+      <div className="flex-shrink-0 bg-neutral-50 border-b border-neutral-200 px-2.5 sm:px-6 py-1.5 flex items-center justify-between gap-2 text-[11px] sm:text-xs">
+        <div className="flex items-center space-x-1.5 min-w-0">
+          <span className="text-xs shrink-0" aria-hidden="true">⚖️</span>
+          <span className="font-semibold text-black shrink-0">
+            Legally Recognized <span className="hidden sm:inline">in the Philippines</span>
+          </span>
+          <span className="text-neutral-400" aria-hidden="true">•</span>
+          <span className="text-neutral-600 truncate">
+            <span className="hidden sm:inline">Republic Act No. 8792 (E-Commerce Act)</span>
+            <span className="sm:hidden font-medium">RA 8792</span>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setReturnToConfirmModal(false);
+            setShowDisclosureModal(true);
+          }}
+          className="text-[11px] font-semibold text-black underline underline-offset-2 hover:text-neutral-600 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+        >
+          View Legal Details
+        </button>
+      </div>
+
       {/* Validation Banner if user tried to complete without signing */}
       {validationError && !showAreYouSureModal && (
         <div className="flex-shrink-0 bg-neutral-900 text-white text-xs px-4 py-2 flex items-center justify-between animate-fadeIn">
@@ -491,6 +594,113 @@ export function SigningFlow({ token }: SigningFlowProps) {
             </div>
           </div>
 
+          {/* Philippine Government ID Capture (When required by contract) */}
+          {contract?.requiresGovId && (
+            <div className="p-3 border border-neutral-300 bg-neutral-50 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-black flex items-center gap-1.5">
+                  <span>🇵🇭</span>
+                  <span>Philippine Government ID Verification</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-200 text-neutral-800 font-bold uppercase">
+                  Required
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-600">
+                To satisfy Philippine statutory identity verification requirements, please attach a clear specimen photo of your valid government ID.
+              </p>
+
+              {/* ID Type selector dropdown */}
+              <div>
+                <label htmlFor="gov-id-type-select" className="text-[10px] font-bold uppercase tracking-wider text-neutral-700 block mb-1">
+                  Government ID Type
+                </label>
+                <select
+                  id="gov-id-type-select"
+                  value={selectedGovIdType}
+                  onChange={(e) => setSelectedGovIdType(e.target.value)}
+                  className="w-full px-2.5 py-2 bg-white text-black text-xs border border-neutral-300 focus:border-black focus:outline-none"
+                >
+                  {PHILIPPINE_GOV_ID_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Camera capture / photo upload */}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-700 block mb-1">
+                  ID Photo Specimen
+                </label>
+
+                {govIdPhotoBase64 ? (
+                  <div className="space-y-2">
+                    <div className="relative border border-neutral-300 bg-white p-2 flex items-center justify-center min-h-[90px]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={govIdPhotoBase64}
+                        alt="Government ID Specimen Preview"
+                        className="max-h-32 max-w-full object-contain"
+                      />
+                      <div className="absolute top-2 right-2 bg-black text-white text-[9px] font-mono font-bold px-1.5 py-0.5 uppercase tracking-wider opacity-90">
+                        Specimen Attached
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-neutral-500 font-mono">
+                        Ready to seal on Certificate
+                      </span>
+                      <label className="text-xs font-semibold text-black underline cursor-pointer hover:text-neutral-700">
+                        Retake Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={handleGovIdCapture}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-neutral-400 bg-white hover:border-black p-4 cursor-pointer transition-colors text-center">
+                      {isCompressingId ? (
+                        <div className="flex flex-col items-center space-y-1.5 py-2">
+                          <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs font-semibold text-neutral-700">Optimizing ID photo...</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="text-xl">📷</div>
+                          <span className="text-xs font-bold text-black block">
+                            Tap to Take Photo or Upload ID
+                          </span>
+                          <span className="text-[10px] text-neutral-500 block">
+                            Camera capture on phone or upload from photo gallery
+                          </span>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        disabled={isCompressingId}
+                        onChange={handleGovIdCapture}
+                      />
+                    </label>
+                    {govIdError && (
+                      <p className="text-[11px] text-red-600 mt-1 font-semibold">{govIdError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Clean 1-Line Agreement Checkbox */}
           <div className="p-2.5 border border-neutral-300 bg-white">
             <label className="flex items-start space-x-2.5 cursor-pointer select-none">
@@ -504,9 +714,22 @@ export function SigningFlow({ token }: SigningFlowProps) {
                 className="mt-0.5 w-4 h-4 rounded-none border border-black accent-black focus:ring-black cursor-pointer"
               />
               <span className="text-xs text-neutral-800 leading-snug font-medium">
-                I agree to the contract terms and confirm this is my legally binding signature.
+                I agree to the contract terms and confirm this is my legally binding signature under Philippine Law (RA 8792).
               </span>
             </label>
+            <div className="mt-1.5 pl-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAreYouSureModal(false);
+                  setReturnToConfirmModal(true);
+                  setShowDisclosureModal(true);
+                }}
+                className="text-[10px] text-neutral-500 hover:text-black underline cursor-pointer"
+              >
+                View statutory validity &amp; non-notarization legal disclosure
+              </button>
+            </div>
           </div>
 
           {validationError && (
@@ -542,33 +765,65 @@ export function SigningFlow({ token }: SigningFlowProps) {
         </div>
       </Modal>
 
-      {/* Consumer Electronic Record & Signature Disclosure Modal */}
+      {/* Philippine Legal Validity & Statutory Disclosure Modal */}
       <Modal
         isOpen={showDisclosureModal}
-        onClose={() => setShowDisclosureModal(false)}
-        title="Electronic Record & Signature Disclosure"
+        onClose={() => {
+          setShowDisclosureModal(false);
+          if (returnToConfirmModal) {
+            setShowAreYouSureModal(true);
+            setReturnToConfirmModal(false);
+          }
+        }}
+        title="Philippine Legal Validity & Statutory Disclosure"
       >
         <div className="space-y-4 text-xs text-neutral-700 max-h-[60vh] overflow-y-auto pr-1">
-          <p className="font-semibold text-black">
-            Pursuant to the Electronic Signatures in Global and National Commerce Act (ESIGN) and Uniform Electronic Transactions Act (UETA).
-          </p>
-
-          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-1 text-[11px] text-neutral-800">
-            <p><strong>Legal Validity:</strong> Electronic signatures executed through SignFlow have the exact same legal weight and enforceability as manual ink signatures on paper.</p>
-            <p><strong>Cryptographic Non-Repudiation:</strong> All executions receive a tamper-evident SHA-256 cryptographic digest, UTC timestamps, and audit verification.</p>
-          </div>
-
-          <div className="space-y-2">
-            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">1. Consent to Electronic Execution</h4>
+          <div className="p-3 bg-neutral-100 border border-neutral-300 space-y-1.5 text-[11px] text-neutral-800">
+            <p className="font-bold text-black flex items-center gap-1.5">
+              <span>⚖️</span>
+              <span>Full Statutory Recognition Under Philippine Law</span>
+            </p>
             <p>
-              By proceeding, you consent to conduct this transaction electronically and receive documents in electronic format.
+              Electronic contracts and signatures executed through SignFlow have the exact same legal validity, binding force, and court admissibility as traditional paper documents in the Philippines.
             </p>
           </div>
 
-          <div className="space-y-2">
-            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">2. Record Retention</h4>
+          <div className="space-y-1.5">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">
+              1. Republic Act No. 8792 (Electronic Commerce Act of 2000)
+            </h4>
             <p>
-              Upon completing this transaction, you will immediately have access to download and retain an immutable, cryptographically sealed copy of the signed contract.
+              Under <strong>Sections 8 &amp; 9 of Republic Act No. 8792</strong>, an electronic signature satisfies all legal requirements for a handwritten signature, provided there is a reliable method to identify the signer and confirm their consent to the information contained in the contract. SignFlow captures intentional signing actions, verified legal names, and multi-factor telemetry to satisfy this statutory requirement.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">
+              2. Why Physical Notarization Is Not Required for Private Contracts
+            </h4>
+            <p>
+              Under the <strong>Philippine Civil Code (Articles 1305 &amp; 1356)</strong>, contracts are consensual and take full legal effect between parties upon mutual agreement. Physical notarization is <em>not</em> required for the legal validity or judicial enforcement of private commercial contracts, independent contractor agreements, service proposals, NDAs, or employment offers.
+            </p>
+            <p className="text-[11px] text-neutral-600 bg-neutral-50 p-2 border border-neutral-200">
+              <em>Note:</em> Notarization merely transforms a private contract into a public instrument for registry purposes (such as real estate title transfers or conveyances of real rights). All standard commercial, service, and freelance agreements are completely valid and enforceable upon signing without a notary.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">
+              3. Supreme Court Rules on Electronic Evidence (A.M. No. 01-7-01-SC)
+            </h4>
+            <p>
+              Under Supreme Court of the Philippines <strong>A.M. No. 01-7-01-SC</strong>, electronic documents and tamper-evident signatures are fully admissible as primary evidence in judicial proceedings. Each completed document receives an immutable SHA-256 cryptographic digest, UTC timestamps, IP address logs, and an official Certificate of Completion ensuring non-repudiation and proof of integrity.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <h4 className="font-bold text-black uppercase text-[11px] tracking-wider">
+              4. International Commercial Recognition (ESIGN &amp; UETA)
+            </h4>
+            <p>
+              In addition to Philippine statutory compliance, SignFlow adheres to global electronic signature standards, including the United States ESIGN Act and Uniform Electronic Transactions Act (UETA), ensuring validity for overseas clients and cross-border commercial transactions.
             </p>
           </div>
 
@@ -576,9 +831,15 @@ export function SigningFlow({ token }: SigningFlowProps) {
             <Button
               variant="primary"
               size="sm"
-              onClick={() => setShowDisclosureModal(false)}
+              onClick={() => {
+                setShowDisclosureModal(false);
+                if (returnToConfirmModal) {
+                  setShowAreYouSureModal(true);
+                  setReturnToConfirmModal(false);
+                }
+              }}
             >
-              Understood &amp; Close
+              {returnToConfirmModal ? 'Back to Confirmation' : 'Understood & Close'}
             </Button>
           </div>
         </div>

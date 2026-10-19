@@ -26,6 +26,7 @@ function NewContractForm() {
   });
   const [message, setMessage] = useState('Please review and sign this agreement.');
   const [requiresCounterSign, setRequiresCounterSign] = useState(false);
+  const [requiresGovId, setRequiresGovId] = useState(false);
   const [signaturePage, setSignaturePage] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
@@ -80,6 +81,7 @@ function NewContractForm() {
           }
           if (draft.message) setMessage(draft.message);
           if (draft.requiresCounterSign !== undefined) setRequiresCounterSign(draft.requiresCounterSign);
+          if (draft.requiresGovId !== undefined) setRequiresGovId(draft.requiresGovId);
           if (draft.signaturePage) setSignaturePage(String(draft.signaturePage));
           if (draft.originalPdfBase64) {
             setFileBase64(draft.originalPdfBase64);
@@ -113,7 +115,8 @@ function NewContractForm() {
     setTitle(tpl.title);
     setFileBase64(tpl.pdfBase64);
     if (tpl.signaturePage) setSignaturePage(String(tpl.signaturePage));
-    if (tpl.requiresCounterSign !== undefined) setRequiresCounterSign(tpl.requiresCounterSign);
+    setRequiresCounterSign(Boolean(tpl.requiresCounterSign));
+    setRequiresGovId(Boolean(tpl.requiresGovId));
 
     try {
       const cleanB64 = tpl.pdfBase64.replace(/^data:[^;]+;base64,/, '');
@@ -151,6 +154,7 @@ function NewContractForm() {
           fileName: file?.name || `${templateTitle}.pdf`,
           signaturePage: signaturePage ? Number(signaturePage) : undefined,
           requiresCounterSign,
+          requiresGovId,
         }),
       });
 
@@ -211,6 +215,7 @@ function NewContractForm() {
       formData.append('expiresAt', expiresAt);
       formData.append('message', message);
       formData.append('requiresCounterSign', String(requiresCounterSign));
+      formData.append('requiresGovId', String(requiresGovId));
       if (file) formData.append('file', file);
       if (fileBase64) formData.append('fileBase64', fileBase64);
       if (signaturePage) formData.append('signaturePage', signaturePage);
@@ -257,6 +262,7 @@ function NewContractForm() {
       formData.append('expiresAt', expiresAt);
       formData.append('message', message);
       formData.append('requiresCounterSign', String(requiresCounterSign));
+      formData.append('requiresGovId', String(requiresGovId));
       if (file) formData.append('file', file);
       if (fileBase64) formData.append('fileBase64', fileBase64);
       if (signaturePage) formData.append('signaturePage', signaturePage);
@@ -557,6 +563,26 @@ function NewContractForm() {
                   </span>
                   <span className="text-[11px] text-neutral-500 block">
                     When client signs, agreement pauses until you counter-sign to seal it.
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            {/* Philippine Government ID Toggle */}
+            <div className="pt-2">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={requiresGovId}
+                  onChange={(e) => setRequiresGovId(e.target.checked)}
+                  className="mt-0.5 rounded-none border-neutral-400 text-black focus:ring-black h-4 w-4"
+                />
+                <div>
+                  <span className="text-xs font-bold text-black uppercase tracking-wider block">
+                    Require Philippine Government ID (PhilSys, Driver&apos;s License, UMID, Passport, TIN, PRC)
+                  </span>
+                  <span className="text-[11px] text-neutral-500 block">
+                    Signer must photograph or upload a verified Philippine Government ID specimen before completing.
                   </span>
                 </div>
               </label>

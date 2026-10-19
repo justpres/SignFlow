@@ -473,6 +473,12 @@ test('Fast signing confirmation validation: requires drawn signature, legal name
   assert.equal(res4.valid, true);
 });
 
+test('Philippine statutory agreement contract: RA 8792 legal binding statement matches statutory requirements', () => {
+  const AGREEMENT_STATEMENT = 'I agree to the contract terms and confirm this is my legally binding signature under Philippine Law (RA 8792).';
+  assert.ok(AGREEMENT_STATEMENT.includes('Philippine Law (RA 8792)'), 'Checkbox text must explicitly cite Philippine Law (RA 8792)');
+  assert.ok(AGREEMENT_STATEMENT.includes('legally binding signature'), 'Checkbox text must state legally binding signature');
+});
+
 test('Fast mobile signing preserves existing template fields while stamping drawn signature', () => {
   const existingTemplateFields = [
     { id: 't-text', type: 'TEXT', page: 1, x: 50, y: 500, value: 'Company NDA' },

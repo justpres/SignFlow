@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     const fileBase64 = formData.get('fileBase64') as string | null;
     const templateId = (formData.get('templateId') as string) || undefined;
     const requiresCounterSign = formData.get('requiresCounterSign') === 'true';
+    const requiresGovId = formData.get('requiresGovId') === 'true';
 
     // Parse multi-fields if provided
     let fields: PlacedField[] = [];
@@ -115,6 +116,7 @@ export async function POST(request: Request) {
         signatureY,
         fields: fields.length > 0 ? fields : existingContract?.fields,
         requiresCounterSign,
+        requiresGovId: formData.has('requiresGovId') ? requiresGovId : (existingContract?.requiresGovId ?? false),
         templateId,
       };
 
@@ -179,12 +181,13 @@ export async function POST(request: Request) {
       dateY,
       fields: fields.length > 0 ? fields : existingContract?.fields,
       requiresCounterSign: formData.has('requiresCounterSign') ? requiresCounterSign : (existingContract?.requiresCounterSign ?? false),
+      requiresGovId: formData.has('requiresGovId') ? requiresGovId : (existingContract?.requiresGovId ?? false),
       templateId: templateId || existingContract?.templateId,
     };
 
     await saveContract(contractToSend);
     await addAuditLog(contractId, 'CONTRACT_CREATED', { title, clientEmail });
-    await addAuditLog(contractId, 'CONTRACT_SENT', { clientEmail, expiresAt, requiresCounterSign });
+    await addAuditLog(contractId, 'CONTRACT_SENT', { clientEmail, expiresAt, requiresCounterSign, requiresGovId: contractToSend.requiresGovId });
 
     return NextResponse.json({
       success: true,

@@ -46,6 +46,10 @@ export interface ContractTemplate {
   signatureX?: number;
   signatureY?: number;
   requiresCounterSign?: boolean;
+  requiresGovId?: boolean;
+  govIdType?: string;
+  govIdPhotoPath?: string;
+  govIdPhotoBase64?: string;
   userId?: string;
   ownerEmail?: string;
   ownerName?: string;
@@ -97,6 +101,10 @@ export interface Contract {
   counterSignerName?: string;
   counterSignatureDataUrl?: string;
   templateId?: string;
+  requiresGovId?: boolean;
+  govIdType?: string;
+  govIdPhotoPath?: string;
+  govIdPhotoBase64?: string;
 }
 
 export interface SignaturePlacement {
@@ -108,6 +116,20 @@ export interface SignaturePlacement {
   dateX: number;
   dateY: number;
 }
+
+export const PHILIPPINE_GOV_ID_TYPES = [
+  "PhilSys National ID",
+  "Driver's License (LTO)",
+  "UMID",
+  "Philippine Passport",
+  "TIN ID (BIR)",
+  "PRC ID",
+  "SSS ID",
+  "Postal ID",
+  "Voter's ID / Comelec",
+] as const;
+
+export type PhilippineGovIdType = typeof PHILIPPINE_GOV_ID_TYPES[number];
 
 export type AuditAction = 
   | 'CONTRACT_CREATED'
@@ -122,7 +144,8 @@ export type AuditAction =
   | 'CONTRACT_EXPIRED'
   | 'DRAFT_SAVED'
   | 'WAITING_COUNTER_SIGN'
-  | 'COUNTER_SIGNATURE_COMPLETED';
+  | 'COUNTER_SIGNATURE_COMPLETED'
+  | 'GOV_ID_VERIFIED';
 
 export interface AuditLog {
   id: string;

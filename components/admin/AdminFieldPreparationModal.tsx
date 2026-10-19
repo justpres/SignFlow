@@ -15,6 +15,8 @@ interface AdminFieldPreparationModalProps {
     signatureY?: number;
   };
   initialFields?: PlacedField[];
+  requiresGovId?: boolean;
+  onToggleGovId?: (val: boolean) => void;
   onSavePlacement: (placement: { page: number; signatureX: number; signatureY: number }) => void;
   onSaveFields?: (fields: PlacedField[], primaryPlacement: { page: number; signatureX: number; signatureY: number }) => void;
   onClearPlacement: () => void;
@@ -33,6 +35,8 @@ export function AdminFieldPreparationModal({
   pdfBase64,
   initialPlacement,
   initialFields,
+  requiresGovId,
+  onToggleGovId,
   onSavePlacement,
   onSaveFields,
   onClearPlacement,
@@ -622,6 +626,17 @@ export function AdminFieldPreparationModal({
             <span className="text-xs text-neutral-500 font-mono">
               Total placed: {fields.length} {fields.length === 1 ? 'field' : 'fields'}
             </span>
+            {onToggleGovId && (
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-black select-none ml-2 border-l border-neutral-300 pl-3">
+                <input
+                  type="checkbox"
+                  checked={requiresGovId ?? false}
+                  onChange={(e) => onToggleGovId(e.target.checked)}
+                  className="rounded-none border-neutral-400 text-black focus:ring-black h-3.5 w-3.5"
+                />
+                <span>Require Philippine Gov ID</span>
+              </label>
+            )}
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">

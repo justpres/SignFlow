@@ -71,6 +71,8 @@ export async function GET(
       dateY: contract.dateY,
       fields: contract.fields,
       requiresCounterSign: contract.requiresCounterSign,
+      requiresGovId: contract.requiresGovId,
+      govIdType: contract.govIdType,
     },
     pdfBase64,
   });

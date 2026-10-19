@@ -2,10 +2,38 @@ import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, rgb } from 'pdf-lib';
 import crypto from 'crypto';
+import zlib from 'zlib';
 import { generateSignedPdf } from '../lib/pdf/generator.ts';
 import { appendCertificateOfCompletion } from '../lib/pdf/certificate.ts';
 
 const SAMPLE_PNG_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+function extractPageText(loadedDoc, pageIndex) {
+  const page = loadedDoc.getPage(pageIndex);
+  const contentsRef = page.node.get(loadedDoc.context.obj('Contents'));
+  if (!contentsRef) return '';
+  const stream = loadedDoc.context.lookup(contentsRef);
+  const rawStreams = stream?.array ? stream.array : [contentsRef];
+  let fullText = '';
+  for (const ref of rawStreams) {
+    const obj = loadedDoc.context.lookup(ref);
+    const contents = obj?.contents || (obj?.getContents && obj.getContents());
+    if (contents) {
+      try {
+        const decompressed = zlib.inflateSync(Buffer.from(contents)).toString('latin1');
+        const hexMatches = decompressed.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g);
+        for (const match of hexMatches) {
+          fullText += Buffer.from(match[1], 'hex').toString('utf8') + ' ';
+        }
+        const litMatches = decompressed.matchAll(/\(([^)]+)\)\s*Tj/g);
+        for (const match of litMatches) {
+          fullText += match[1] + ' ';
+        }
+      } catch {}
+    }
+  }
+  return fullText;
+}
 
 async function createContractDoc(numPages = 2) {
   const doc = await PDFDocument.create();
@@ -76,9 +104,16 @@ describe('SignFlow Industry-Grade Certificate of Completion & Legal Audit Suite'
     const certPage = loadedDoc.getPage(2);
     assert.equal(certPage.getWidth(), 612);
     assert.equal(certPage.getHeight(), 792);
+
+    // Verify statutory citations rendered on certificate page
+    const certText = extractPageText(loadedDoc, 2);
+    assert.ok(certText.includes('Republic Act No. 8792'), 'Must cite Republic Act No. 8792');
+    assert.ok(certText.includes('A.M. No. 01-7-01-SC'), 'Must cite Supreme Court A.M. No. 01-7-01-SC');
+    assert.ok(certText.includes('Rules on Electronic Evidence'), 'Must cite Rules on Electronic Evidence');
+    assert.ok(certText.includes('ESIGN / UETA'), 'Must cite ESIGN / UETA');
   });
 
-  it('appendCertificateOfCompletion directly renders all court-admissible ESIGN/UETA metadata', async () => {
+  it('appendCertificateOfCompletion renders Republic Act No. 8792 and Supreme Court A.M. No. 01-7-01-SC statutory compliance', async () => {
     const doc = await PDFDocument.create();
     doc.addPage([612, 792]); // 1 contract page
 
@@ -102,6 +137,16 @@ describe('SignFlow Industry-Grade Certificate of Completion & Legal Audit Suite'
     assert.equal(doc.getPageCount(), 2);
     const pdfBytes = await doc.save();
     assert.ok(pdfBytes.length > 0);
+
+    const verifiedDoc = await PDFDocument.load(pdfBytes);
+    const certText = extractPageText(verifiedDoc, 1);
+    assert.ok(certText.includes('PHILIPPINE & INTERNATIONAL STATUTORY COMPLIANCE STATEMENT'), 'Must render statutory section title');
+    assert.ok(certText.includes('Republic Act No. 8792'), 'Must cite Republic Act No. 8792');
+    assert.ok(certText.includes('The Philippine Electronic Commerce Act of 2000'), 'Must cite E-Commerce Act of 2000');
+    assert.ok(certText.includes('Supreme Court A.M. No. 01-7-01-SC'), 'Must cite Supreme Court A.M. No. 01-7-01-SC');
+    assert.ok(certText.includes('Rules on Electronic Evidence'), 'Must cite Rules on Electronic Evidence');
+    assert.ok(certText.includes('ESIGN / UETA'), 'Must cite international ESIGN / UETA standards');
+    assert.ok(certText.includes('cryptographic SHA-256 hashes'), 'Must mention cryptographic SHA-256 hashes');
   });
 
   it('appendCertificateOfCompletion falls back gracefully when audit logs are omitted', async () => {
@@ -123,6 +168,11 @@ describe('SignFlow Industry-Grade Certificate of Completion & Legal Audit Suite'
     assert.equal(doc.getPageCount(), 2);
     const savedBytes = await doc.save();
     assert.ok(savedBytes.length > 0);
+
+    const verifiedDoc = await PDFDocument.load(savedBytes);
+    const certText = extractPageText(verifiedDoc, 1);
+    assert.ok(certText.includes('Republic Act No. 8792'), 'Fallback certificate must cite Republic Act No. 8792');
+    assert.ok(certText.includes('Supreme Court A.M. No. 01-7-01-SC'), 'Fallback certificate must cite Supreme Court A.M. No. 01-7-01-SC');
   });
 
   it('generateSignedPdf keeps contract pages visually clean without extra text or extra pages when attachCertificate is false', async () => {

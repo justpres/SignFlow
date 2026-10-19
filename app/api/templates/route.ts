@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { title, description, pdfBase64, fileName, fields, signaturePage, signatureX, signatureY, requiresCounterSign } = body;
+    const { title, description, pdfBase64, fileName, fields, signaturePage, signatureX, signatureY, requiresCounterSign, requiresGovId } = body;
 
     if (!title || !pdfBase64) {
       return NextResponse.json({ error: 'Template title and PDF content are required' }, { status: 400 });
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       signatureX: signatureX !== undefined ? Number(signatureX) : undefined,
       signatureY: signatureY !== undefined ? Number(signatureY) : undefined,
       requiresCounterSign: Boolean(requiresCounterSign),
+      requiresGovId: Boolean(requiresGovId),
       userId: session.userId,
       ownerEmail: session.email,
       ownerName: session.name,

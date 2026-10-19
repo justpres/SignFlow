@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
-import { DownloadIcon, WarningIcon } from '@/components/ui/Icons';
+import { DownloadIcon, WarningIcon, CheckIcon } from '@/components/ui/Icons';
 import { SignaturePad } from '@/components/signature/SignaturePad';
 import { TypedSignature } from '@/components/signature/TypedSignature';
 import { UserAvatar } from '@/components/ui/UserAvatar';
@@ -348,6 +348,26 @@ export default function ContractDetailPage() {
                 </div>
               )}
 
+              <div>
+                <dt className="text-neutral-500 font-medium">Philippine Government ID</dt>
+                <dd className="mt-0.5">
+                  {contract.requiresGovId ? (
+                    contract.govIdType && (contract.govIdPhotoBase64 || contract.govIdPhotoPath) ? (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-black text-white font-bold text-xs">
+                        <CheckIcon className="w-3.5 h-3.5" />
+                        Verified: {contract.govIdType}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-neutral-100 text-neutral-800 border border-neutral-300 font-medium text-xs">
+                        Required ({contract.govIdType || 'Pending Signer Submission'})
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-neutral-400 font-mono">Not Required</span>
+                  )}
+                </dd>
+              </div>
+
               {contract.fields && contract.fields.length > 0 && (
                 <div className="sm:col-span-2">
                   <dt className="text-neutral-500 font-medium">Placed Fields ({contract.fields.length})</dt>
@@ -361,6 +381,41 @@ export default function ContractDetailPage() {
                 </div>
               )}
             </dl>
+
+            {(contract.govIdPhotoBase64 || contract.govIdPhotoPath) && (
+              <div className="mt-6 pt-4 border-t border-neutral-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-black font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckIcon className="w-4 h-4 text-black" />
+                    Verified Government ID Specimen ({contract.govIdType || 'Philippine ID'})
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-neutral-100 text-neutral-600 border border-neutral-200">
+                    RA 8792 Legal Specimen
+                  </span>
+                </div>
+                <div className="p-3 bg-neutral-50 border border-neutral-200 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="relative border border-neutral-300 bg-white p-1 max-w-xs shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={contract.govIdPhotoBase64 || contract.govIdPhotoPath}
+                      alt={`Specimen ${contract.govIdType || 'Government ID'}`}
+                      className="max-h-36 max-w-full object-contain"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-25">
+                      <span className="text-neutral-900 font-mono font-bold text-xs tracking-widest border border-neutral-900 p-0.5 rotate-[-12deg]">
+                        VERIFIED SPECIMEN
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-neutral-600 space-y-1">
+                    <p className="font-semibold text-black">{contract.govIdType || 'Philippine Government ID'}</p>
+                    <p className="text-[11px] text-neutral-500">
+                      Captured by {contract.clientName} prior to digital signing and watermarked on the Certificate of Completion.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {contract.message && (
               <div className="mt-6 pt-4 border-t border-neutral-100 text-xs">

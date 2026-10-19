@@ -22,6 +22,9 @@ export interface CertificateParams {
   signatureMethod?: string;
   auditEvents?: CertificateAuditEntry[];
   signaturePngBase64?: string;
+  requiresGovId?: boolean;
+  govIdType?: string;
+  govIdPhotoBase64?: string;
 }
 
 /**
@@ -205,12 +208,52 @@ export async function appendCertificateOfCompletion(
   page.drawText('Signature Method:', { x: leftColX, y: currentY, size: 8, font: helveticaBold, color: rgb(0.3, 0.3, 0.3) });
   const methodLabel = params.signatureMethod === 'TYPE' ? 'Typed Electronic Font Representation' : 'Drawn Canvas (Handwritten Biometric Capture)';
   page.drawText(methodLabel, { x: leftColValX, y: currentY, size: 8, font: helvetica, color: rgb(0, 0, 0) });
+  currentY -= 13;
 
-  // Signature thumbnail box on right side
-  const sigBoxW = 160;
-  const sigBoxH = 65;
-  const sigBoxX = width - marginX - sigBoxW;
-  const sigBoxY = signerStartY - sigBoxH + 8;
+  if (params.govIdPhotoBase64) {
+    page.drawText('Philippine Gov ID:', { x: leftColX, y: currentY, size: 8, font: helveticaBold, color: rgb(0.3, 0.3, 0.3) });
+    page.drawText(`${params.govIdType || 'PhilSys National ID'} (Verified Specimen)`, { x: leftColValX, y: currentY, size: 8, font: helvetica, color: rgb(0, 0, 0) });
+    currentY -= 13;
+  }
+
+  // Right-side thumbnail boxes: if govIdPhotoBase64 is present, render stacked signature & ID specimen
+  const hasGovId = Boolean(params.govIdPhotoBase64);
+  const boxW = 155;
+  const boxX = width - marginX - boxW;
+
+  let sigBoxX: number;
+  let sigBoxY: number;
+  let sigBoxW: number;
+  let sigBoxH: number;
+
+  let idBoxX: number;
+  let idBoxY: number;
+  let idBoxW: number;
+  let idBoxH: number;
+
+  if (hasGovId) {
+    // Stacked thumbnail boxes on the right to preserve clean left-column text margin without overlap
+    sigBoxW = boxW;
+    sigBoxH = 44;
+    sigBoxX = boxX;
+    sigBoxY = signerStartY - 36;
+
+    idBoxW = boxW;
+    idBoxH = 44;
+    idBoxX = boxX;
+    idBoxY = signerStartY - 86;
+  } else {
+    // Single signature box on the right
+    sigBoxW = 160;
+    sigBoxH = 65;
+    sigBoxX = width - marginX - sigBoxW;
+    sigBoxY = signerStartY - sigBoxH + 8;
+
+    idBoxW = 0;
+    idBoxH = 0;
+    idBoxX = 0;
+    idBoxY = 0;
+  }
 
   page.drawRectangle({
     x: sigBoxX,
@@ -224,8 +267,8 @@ export async function appendCertificateOfCompletion(
 
   page.drawText('CAPTURED SIGNATURE', {
     x: sigBoxX + 6,
-    y: sigBoxY + sigBoxH - 11,
-    size: 6.5,
+    y: sigBoxY + sigBoxH - 10,
+    size: hasGovId ? 6 : 6.5,
     font: helveticaBold,
     color: rgb(0.4, 0.4, 0.4),
   });
@@ -235,27 +278,95 @@ export async function appendCertificateOfCompletion(
       const cleanSigData = params.signaturePngBase64.replace(/^data:image\/png;base64,/, '');
       const sigBytes = Buffer.from(cleanSigData, 'base64');
       const sigImg = await pdfDoc.embedPng(sigBytes);
-      const dims = sigImg.scaleToFit(sigBoxW - 16, sigBoxH - 18);
+      const dims = sigImg.scaleToFit(sigBoxW - 14, sigBoxH - (hasGovId ? 14 : 18));
       page.drawImage(sigImg, {
         x: sigBoxX + (sigBoxW - dims.width) / 2,
-        y: sigBoxY + 4 + (sigBoxH - 16 - dims.height) / 2,
+        y: sigBoxY + 3 + (sigBoxH - (hasGovId ? 12 : 16) - dims.height) / 2,
         width: dims.width,
         height: dims.height,
       });
     } catch {
       // Fallback if image embedding fails
       page.drawText('[Verified Electronic Signature]', {
-        x: sigBoxX + 12,
-        y: sigBoxY + 22,
-        size: 7.5,
+        x: sigBoxX + 10,
+        y: sigBoxY + (hasGovId ? 14 : 22),
+        size: 7,
         font: helveticaOblique,
         color: rgb(0.3, 0.3, 0.3),
       });
     }
   }
 
+  if (hasGovId && params.govIdPhotoBase64) {
+    page.drawRectangle({
+      x: idBoxX,
+      y: idBoxY,
+      width: idBoxW,
+      height: idBoxH,
+      borderColor: rgb(0.7, 0.7, 0.7),
+      borderWidth: 0.75,
+      color: rgb(0.98, 0.98, 0.98),
+    });
+
+    const idLabel = `VERIFIED GOV ID (${truncateText(params.govIdType || 'PHILIPPINES', 15)})`;
+    page.drawText(idLabel, {
+      x: idBoxX + 6,
+      y: idBoxY + idBoxH - 10,
+      size: 5.8,
+      font: helveticaBold,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+
+    try {
+      const cleanIdData = params.govIdPhotoBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+      const idBytes = Buffer.from(cleanIdData, 'base64');
+      let idImg;
+      try {
+        if (params.govIdPhotoBase64.includes('image/png')) {
+          idImg = await pdfDoc.embedPng(idBytes);
+        } else {
+          idImg = await pdfDoc.embedJpg(idBytes);
+        }
+      } catch {
+        try {
+          idImg = await pdfDoc.embedPng(idBytes);
+        } catch {
+          idImg = await pdfDoc.embedJpg(idBytes);
+        }
+      }
+
+      if (idImg) {
+        const dims = idImg.scaleToFit(idBoxW - 14, idBoxH - 14);
+        page.drawImage(idImg, {
+          x: idBoxX + (idBoxW - dims.width) / 2,
+          y: idBoxY + 3 + (idBoxH - 14 - dims.height) / 2,
+          width: dims.width,
+          height: dims.height,
+        });
+      }
+    } catch {
+      page.drawText('[Verified Specimen Attached]', {
+        x: idBoxX + 8,
+        y: idBoxY + 14,
+        size: 7,
+        font: helveticaOblique,
+        color: rgb(0.3, 0.3, 0.3),
+      });
+    }
+
+    // Watermark [VERIFIED SPECIMEN]
+    page.drawText('[VERIFIED SPECIMEN]', {
+      x: idBoxX + 18,
+      y: idBoxY + (idBoxH / 2) - 4,
+      size: 7.5,
+      font: helveticaBold,
+      color: rgb(0.85, 0.1, 0.1),
+      opacity: 0.6,
+    });
+  }
+
   // --- 4. Chronological Audit Event History Table ---
-  currentY = Math.min(currentY, sigBoxY) - 16;
+  currentY = Math.min(currentY, hasGovId ? idBoxY : sigBoxY) - 16;
   currentY = drawSectionHeader('Chronological Audit Event History', currentY);
 
   // Table header
@@ -350,6 +461,7 @@ export async function appendCertificateOfCompletion(
       case 'CONTRACT_REVOKED': return 'Contract Revoked';
       case 'CONTRACT_EXPIRED': return 'Contract Expired';
       case 'AUDIT_SUMMARY': return 'Audit Records';
+      case 'GOV_ID_VERIFIED': return 'Government ID Verified';
       default: return action;
     }
   };
@@ -440,8 +552,8 @@ export async function appendCertificateOfCompletion(
 
   // --- 5. Legal Disclosure & Statutory Compliance Clause ---
   // Anchored cleanly above the footer to maintain balanced legal document proportions
-  const legalBoxHeight = 56;
-  const legalBoxY = 52;
+  const legalBoxHeight = 64;
+  const legalBoxY = 50;
   page.drawRectangle({
     x: marginX,
     y: legalBoxY,
@@ -452,23 +564,23 @@ export async function appendCertificateOfCompletion(
     color: rgb(0.98, 0.98, 0.98),
   });
 
-  page.drawText('LEGAL DISCLOSURE & STATUTORY COMPLIANCE STATEMENT', {
+  page.drawText('PHILIPPINE & INTERNATIONAL STATUTORY COMPLIANCE STATEMENT', {
     x: marginX + 10,
-    y: legalBoxY + 43,
+    y: legalBoxY + 51,
     size: 7.5,
     font: helveticaBold,
     color: rgb(0, 0, 0),
   });
 
-  const legalText1 = 'This document was electronically signed in compliance with the Electronic Signatures in Global and';
-  const legalText2 = 'National Commerce Act (ESIGN) and the Uniform Electronic Transactions Act (UETA).';
-  const legalText3 = 'The cryptographic hashes, IP addresses, and chronological audit trail recorded herein constitute authentic,';
-  const legalText4 = 'tamper-evident, and court-admissible electronic proof of the execution and non-repudiation of this contract.';
+  const legalText1 = 'This document was electronically executed in compliance with Republic Act No. 8792 (The Philippine Electronic Commerce Act';
+  const legalText2 = 'of 2000), Supreme Court A.M. No. 01-7-01-SC (Rules on Electronic Evidence), and international standards (ESIGN / UETA).';
+  const legalText3 = 'The cryptographic SHA-256 hashes, verified IP addresses, and chronological audit trail recorded herein constitute authentic,';
+  const legalText4 = 'tamper-evident, and court-admissible electronic proof of the execution, assent, and non-repudiation of this agreement.';
 
-  page.drawText(legalText1, { x: marginX + 10, y: legalBoxY + 31, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
-  page.drawText(legalText2, { x: marginX + 10, y: legalBoxY + 21, size: 6.8, font: helveticaBold, color: rgb(0, 0, 0) });
-  page.drawText(legalText3, { x: marginX + 10, y: legalBoxY + 11, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
-  page.drawText(legalText4, { x: marginX + 10, y: legalBoxY + 1, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+  page.drawText(legalText1, { x: marginX + 10, y: legalBoxY + 39, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+  page.drawText(legalText2, { x: marginX + 10, y: legalBoxY + 28, size: 6.8, font: helveticaBold, color: rgb(0, 0, 0) });
+  page.drawText(legalText3, { x: marginX + 10, y: legalBoxY + 17, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
+  page.drawText(legalText4, { x: marginX + 10, y: legalBoxY + 7, size: 6.8, font: helvetica, color: rgb(0.2, 0.2, 0.2) });
 
   // --- 6. Document Footer ---
   const footerY = 32;

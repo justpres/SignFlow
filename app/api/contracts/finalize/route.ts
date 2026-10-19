@@ -6,6 +6,8 @@ import { generateSignedPdf } from '@/lib/pdf/generator';
 import { sendContractSignedEmail } from '@/lib/notifications/email';
 import { sendContractSignedTelegram } from '@/lib/notifications/telegram';
 
+import { validateFinalizeGovId } from '@/lib/contracts/validation';
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -24,6 +26,8 @@ export async function POST(request: Request) {
       placement,
       fields,
       initialsDataUrl,
+      govIdType,
+      govIdPhotoBase64,
     } = body;
 
     if (!token || !clientName || !signatureDataUrl) {
@@ -35,6 +39,15 @@ export async function POST(request: Request) {
 
     if (!contract) {
       return NextResponse.json({ error: 'Signing request not found' }, { status: 404 });
+    }
+
+    // Require Philippine Government ID if designated by contract
+    const govIdValidation = validateFinalizeGovId(contract, { govIdPhotoBase64 });
+    if (!govIdValidation.valid) {
+      return NextResponse.json(
+        { error: govIdValidation.error },
+        { status: govIdValidation.status || 400 }
+      );
     }
 
     // Security validation checks:
@@ -95,6 +108,18 @@ export async function POST(request: Request) {
       details: log.metadata ? JSON.stringify(log.metadata) : undefined,
     }));
 
+    const effectiveGovIdType = govIdType || contract.govIdType || 'PhilSys National ID';
+
+    if (govIdPhotoBase64 || contract.requiresGovId) {
+      auditEvents.push({
+        action: 'GOV_ID_VERIFIED',
+        timestamp: nowIso,
+        ipAddress,
+        userAgent,
+        details: `Verified ID: ${effectiveGovIdType}`,
+      });
+    }
+
     auditEvents.push({
       action: 'CONTRACT_SIGNED',
       timestamp: nowIso,
@@ -128,6 +153,9 @@ export async function POST(request: Request) {
       attachCertificate: false,
       fields: activeFields,
       initialsPngBase64: initialsDataUrl,
+      requiresGovId: contract.requiresGovId,
+      govIdType: effectiveGovIdType,
+      govIdPhotoBase64: govIdPhotoBase64 || contract.govIdPhotoBase64,
     });
 
     // Store signed PDF as artifact
@@ -146,6 +174,19 @@ export async function POST(request: Request) {
     contract.signatureMethod = signatureMethod || 'DRAW';
     contract.signatureImagePath = signatureDataUrl;
     if (initialsDataUrl) contract.initialsImagePath = initialsDataUrl;
+    if (govIdPhotoBase64) {
+      contract.govIdType = effectiveGovIdType;
+      contract.govIdPhotoBase64 = govIdPhotoBase64;
+      try {
+        const cleanB64 = govIdPhotoBase64.replace(/^data:image\/[a-zA-Z]+;base64,/, '');
+        const idBuffer = Buffer.from(cleanB64, 'base64');
+        const govIdStoragePath = `contracts/${contract.id}/gov_id.jpg`;
+        await uploadContractFile(govIdStoragePath, idBuffer, 'image/jpeg');
+        contract.govIdPhotoPath = govIdStoragePath;
+      } catch (err) {
+        console.warn('Failed to upload gov ID to storage:', err);
+      }
+    }
     contract.confirmationAccepted = true;
     if (activeFields) contract.fields = activeFields;
     if (finalPage !== undefined) contract.signaturePage = finalPage;
@@ -159,6 +200,10 @@ export async function POST(request: Request) {
     await saveContract(contract);
 
     // Audit logs with client IP address and device telemetry
+    if (govIdPhotoBase64 || contract.requiresGovId) {
+      await addAuditLog(contract.id, 'GOV_ID_VERIFIED', { govIdType: effectiveGovIdType }, ipAddress, userAgent);
+    }
+
     await addAuditLog(contract.id, 'SIGNATURE_COMPLETED', {
       clientName,
       signatureMethod,

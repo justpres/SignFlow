@@ -33,6 +33,9 @@ export interface FinalizePdfParams {
     signatureX: number;
     signatureY: number;
   };
+  requiresGovId?: boolean;
+  govIdType?: string;
+  govIdPhotoBase64?: string;
 }
 
 /**
@@ -64,6 +67,9 @@ export async function generateSignedPdf({
   counterSignaturePngBase64,
   counterSignerName,
   counterSignPlacement,
+  requiresGovId,
+  govIdType,
+  govIdPhotoBase64,
 }: FinalizePdfParams): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(originalPdfBuffer);
 
@@ -284,6 +290,9 @@ export async function generateSignedPdf({
       signatureMethod,
       auditEvents,
       signaturePngBase64,
+      requiresGovId,
+      govIdType,
+      govIdPhotoBase64,
     });
   }
 
